@@ -1189,7 +1189,7 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.6.0';
+    const TARGETS_VERSION = '1.6.1';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
@@ -1206,19 +1206,25 @@
       }
     }
 
-    // 若无本地缓存或版本升级，拉取最新的 targets.json (v1.5.0)
-    if (!loadedTargets) {
-      try {
-        const resp = await fetch('targets.json?_v=' + Date.now());
-        if (resp.ok) {
-          const data = await resp.json();
+    const needFetchPublic = !loadedTargets;
+
+    // 🚀 性能优化：并发并行拉取 targets.json 与 targets.local.json (消除串行等待，大幅提升跨国/弱网加载速度)
+    const [publicResp, localResp] = await Promise.all([
+      needFetchPublic ? fetch('targets.json?_v=' + Date.now()).catch(() => null) : Promise.resolve(null),
+      fetch('targets.local.json?_v=' + Date.now()).catch(() => null)
+    ]);
+
+    // 1. 处理官方通用配置 targets.json
+    if (needFetchPublic) {
+      if (publicResp && publicResp.ok) {
+        try {
+          const data = await publicResp.json();
           let newTargets = data.targets || [];
           if (saved) {
             try {
               const oldTargets = JSON.parse(saved);
               const userCustomTargets = oldTargets.filter(t => (t.category || 'custom') === 'custom');
               if (userCustomTargets.length > 0) {
-                // 保留用户旧自定义项，同时补充 targets.json 中新增的官方默认自定义项 (如 GitHub 加速)
                 const existingUrls = new Set(userCustomTargets.map(t => t.url));
                 const newCustomDefaults = newTargets.filter(t => (t.category || 'custom') === 'custom' && !existingUrls.has(t.url));
                 const mergedCustom = [...userCustomTargets, ...newCustomDefaults];
@@ -1229,35 +1235,17 @@
           }
           loadedTargets = newTargets;
           localStorage.setItem('net_reachability_version', data.version || TARGETS_VERSION);
-        } else {
-          throw new Error('HTTP ' + resp.status);
+        } catch (e) {
+          loadedTargets = getBuiltinTargetsFallback();
         }
-      } catch (e) {
-        console.warn('Cannot fetch targets.json, fallback to built-in:', e);
-        loadedTargets = [
-          { id: 'custom_gh_proxy', name: 'GH-Proxy 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh-proxy.com', enabled: true },
-          { id: 'custom_jsdelivr', name: 'jsDelivr 官方CDN', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdelivr.net', enabled: true },
-          { id: 'custom_jsdmirror', name: 'JSDMirror 镜像加速', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdmirror.com', enabled: true },
-          { id: 'custom_ghproxy_net', name: 'GHProxy.net 节点', group: 'GitHub加速', category: 'custom', url: 'https://ghproxy.net', enabled: true },
-          { id: 'custom_gh_ddlc', name: 'DDLC GitHub 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh.ddlc.top', enabled: true },
-          { id: 'custom_outlook', name: 'Outlook 邮箱网页', group: '常用办公', category: 'custom', url: 'https://outlook.live.com/', enabled: true },
-          { id: 'custom_wise', name: 'Wise 官网', group: '跨境理财', category: 'custom', url: 'https://wise.com/', enabled: true },
-          { id: 'custom_ifast', name: 'iFAST 官网', group: '境外银行', category: 'custom', url: 'https://www.ifastgb.com/', enabled: true },
-          { id: 'custom_schwab', name: '嘉信理财', group: '美股券商', category: 'custom', url: 'https://www.schwab.com/', enabled: true },
-          { id: 'custom_tradingview', name: 'TradingView', group: '行情看盘', category: 'custom', url: 'https://www.tradingview.com/', enabled: true },
-          { id: 'custom_ibkr', name: 'IBKR 盈透证券', group: '美股券商', category: 'custom', url: 'https://www.interactivebrokers.com/', enabled: true },
-          { id: 'custom_binance', name: '币安 Binance', group: '加密资产', category: 'custom', url: 'https://www.binance.com/', enabled: true },
-          { id: 'custom_htx', name: '火币 HTX', group: '加密资产', category: 'custom', url: 'https://www.htx.com/', enabled: true },
-          { id: 'sm_youtube', name: 'YouTube 视频', group: '社交媒体', category: 'overseas', url: 'https://www.youtube.com/', enabled: true },
-          { id: 'sm_instagram', name: 'Instagram 社交', group: '社交媒体', category: 'overseas', url: 'https://www.instagram.com/', enabled: true }
-        ];
+      } else {
+        loadedTargets = getBuiltinTargetsFallback();
       }
     }
 
-    // 🚀 核心特性：自动检测并载入本地私有配置 targets.local.json (受 .gitignore 保护，绝不上传 GitHub)
-    try {
-      const localResp = await fetch('targets.local.json?_v=' + Date.now());
-      if (localResp.ok) {
+    // 2. 处理本地私人配置 targets.local.json (受 .gitignore 保护)
+    if (localResp && localResp.ok) {
+      try {
         const localData = await localResp.json();
         const privateTargets = localData.custom_targets || localData.targets || [];
         if (Array.isArray(privateTargets) && privateTargets.length > 0) {
@@ -1273,7 +1261,7 @@
 
           const privIds = new Set(formattedPrivates.map(p => p.id));
           const privUrls = new Set(formattedPrivates.map(p => p.url));
-          const otherTargets = loadedTargets.filter(t => !privIds.has(t.id) && !privUrls.has(t.url));
+          const otherTargets = (loadedTargets || []).filter(t => !privIds.has(t.id) && !privUrls.has(t.url));
 
           const otherCustom = otherTargets.filter(t => (t.category || 'custom') === 'custom');
           const nonCustom = otherTargets.filter(t => (t.category || 'custom') !== 'custom');
@@ -1281,15 +1269,38 @@
           // 将私人网站列表【置顶】在原来的自定义网址列表最上方
           loadedTargets = [...formattedPrivates, ...otherCustom, ...nonCustom];
         }
+      } catch (e) {
+        console.warn('Failed to parse targets.local.json:', e);
       }
-    } catch {
-      // 本地私有文件不存在时静默忽略（适合云端公开部署环境）
     }
 
     state.targets = loadedTargets || [];
     saveTargets();
     renderAllCards();
     updateDashboard();
+  }
+
+  function getBuiltinTargetsFallback() {
+    return [
+      { id: 'custom_gh_proxy', name: 'GH-Proxy 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh-proxy.com', enabled: true },
+      { id: 'custom_jsdelivr', name: 'jsDelivr 官方CDN', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdelivr.net', enabled: true },
+      { id: 'custom_jsdmirror', name: 'JSDMirror 镜像加速', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdmirror.com', enabled: true },
+      { id: 'custom_ghproxy_net', name: 'GHProxy.net 节点', group: 'GitHub加速', category: 'custom', url: 'https://ghproxy.net', enabled: true },
+      { id: 'custom_gh_ddlc', name: 'DDLC GitHub 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh.ddlc.top', enabled: true },
+      { id: 'custom_jsdelivr_fastly', name: 'jsDelivr Fastly 节点', group: 'GitHub加速', category: 'custom', url: 'https://fastly.jsdelivr.net', enabled: true },
+      { id: 'custom_jsdelivr_gcore', name: 'jsDelivr GCore 节点', group: 'GitHub加速', category: 'custom', url: 'https://gcore.jsdelivr.net', enabled: true },
+      { id: 'custom_jsdelivr_cf', name: 'jsDelivr Cloudflare 节点', group: 'GitHub加速', category: 'custom', url: 'https://testingcf.jsdelivr.net', enabled: true },
+      { id: 'custom_outlook', name: 'Outlook 邮箱网页', group: '常用办公', category: 'custom', url: 'https://outlook.live.com/', enabled: true },
+      { id: 'custom_wise', name: 'Wise 官网', group: '跨境理财', category: 'custom', url: 'https://wise.com/', enabled: true },
+      { id: 'custom_ifast', name: 'iFAST 官网', group: '境外银行', category: 'custom', url: 'https://www.ifastgb.com/', enabled: true },
+      { id: 'custom_schwab', name: '嘉信理财', group: '美股券商', category: 'custom', url: 'https://www.schwab.com/', enabled: true },
+      { id: 'custom_tradingview', name: 'TradingView', group: '行情看盘', category: 'custom', url: 'https://www.tradingview.com/', enabled: true },
+      { id: 'custom_ibkr', name: 'IBKR 盈透证券', group: '美股券商', category: 'custom', url: 'https://www.interactivebrokers.com/', enabled: true },
+      { id: 'custom_binance', name: '币安 Binance', group: '加密资产', category: 'custom', url: 'https://www.binance.com/', enabled: true },
+      { id: 'custom_htx', name: '火币 HTX', group: '加密资产', category: 'custom', url: 'https://www.htx.com/', enabled: true },
+      { id: 'sm_youtube', name: 'YouTube 视频', group: '社交媒体', category: 'overseas', url: 'https://www.youtube.com/', enabled: true },
+      { id: 'sm_instagram', name: 'Instagram 社交', group: '社交媒体', category: 'overseas', url: 'https://www.instagram.com/', enabled: true }
+    ];
   }
 
   function saveTargets() {
