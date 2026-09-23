@@ -1,0 +1,8 @@
+{
+  "name": "404-checker",
+  "version": "1.6.0",
+  "description": "移动端多网址网络可达性与延迟检测工具",
+  "scripts": {
+    "build": "node build.js"
+  }
+}
