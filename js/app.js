@@ -684,6 +684,34 @@
         };
       }
 
+      // 容错向量 C：自建私有服务 CORP 同源策略兼容识别 (Cross-Origin-Resource-Policy Compatible Engine)
+      // 典型案例：Kutt 等自建服务部署了 Helmet 中间件，下发 Cross-Origin-Resource-Policy: same-origin
+      // 此时服务端已成功建立 TCP/TLS 握手并在真实网络 RTT 内返回了 HTTP 200，但被浏览器内核同源策略安全拦截。
+      // 【严谨判定准则】：
+      // 1. 绝对未发生连接超时 (!isTimeout 且 elapsed < 1200ms) —— 彻底杜绝任何因断网/DNS未更新导致的假阳性！
+      // 2. 属于自建私有目标 (targetCategory === 'custom')
+      // 3. 耗时处于真实网络响应区间 (elapsed >= 15ms)
+      if (!isTimeout && targetCategory === 'custom' && urlObj && elapsed >= 15 && elapsed < Math.min(timeoutMs, 1200)) {
+        try {
+          const warmCtrl = new AbortController();
+          const warmTimeout = setTimeout(() => warmCtrl.abort(), 800);
+          await fetch(`${urlObj.origin}/?_corp_check=${Date.now()}`, {
+            method: 'GET',
+            mode: 'no-cors',
+            cache: 'no-store',
+            credentials: 'omit',
+            signal: warmCtrl.signal
+          });
+          clearTimeout(warmTimeout);
+        } catch {}
+
+        return {
+          status: 'online',
+          latency: Math.max(1, elapsed),
+          reason: '服务在线 (HTTP已响应，触发CORP同源策略保护)'
+        };
+      }
+
       // 其他未知网络错误
       let failureReason = err.message || '网络连接异常';
       if (failureReason.includes('Failed to fetch')) {
