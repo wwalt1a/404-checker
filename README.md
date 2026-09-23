@@ -95,7 +95,38 @@
 
 ---
 
-## 📝 自定义修改说明
-
 - **修改默认网址**：直接编辑 [targets.json](file:///p:/s.F/antigravity/404-checker/targets.json) 文件，遵循结构添加或替换目标即可，无需修改任何 JavaScript 逻辑。
+- **本地私有专属网址**：支持创建 `targets.local.json`（受 `.gitignore` 保护，永不上载），其中的网址会自动置顶到“自定义网址”最前方。
+
+---
+
+## 🔐 部署时可选设置访问密码（安全鉴权）
+
+若您在公网部署（如 Cloudflare Pages），希望仅自己或受邀用户可见您的私有测试目标，可一键开启访问密码保护：
+
+### 1. 开启密码保护
+直接修改根目录下的 `config.js` 文件：
+```javascript
+window.AUTH_CONFIG = {
+  enabled: true,              // 开启密码保护
+  password: "yourPassword",   // 访问密码 (明文方式)
+  passwordHash: "",           // 或可选 SHA-256 哈希值 (更安全)
+  rememberDays: 7,            // 记住免密状态天数 (默认7天)
+  title: "安全访问验证",
+  subtitle: "本站点已开启访问控制，请输入访问密码以解锁"
+};
+```
+
+### 2. 推荐：使用 SHA-256 哈希（避免密码在公共仓库暴露）
+在任何现代浏览器中按 F12 打开 Console 控制台，粘贴并执行以下命令生成您密码的哈希：
+```javascript
+crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的专属密码')).then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')))
+```
+将生成的 64 位字符串填入 `passwordHash`，并将 `password` 留空即可！
+
+### 3. 严格数据隔离保证
+- **未输入密码前**：网页**绝不加载** `targets.json` 或私有网址，DOM 中**完全不渲染**任何卡片、测试域名或仪表盘统计信息，后台**绝不发起**批量网络探测。
+- **验证通过后**：优雅淡入解锁，自动加载目标并执行测速。
+- **随时重新锁定**：导航栏右上角提供 🔒 按钮，可随时一键锁定并清空会话。
+
 - **用户自定制**：用户在手机浏览器中通过前端弹窗添加、删除或批量导入的网址均会自动保存在手机本地的 `localStorage` 中；点击弹窗底部的“重置为默认网址”即可随时一键复原。

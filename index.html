@@ -13,13 +13,16 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
   
+  <!-- Configuration Script (Deployment-time Optional Authentication) -->
+  <script src="config.js"></script>
+
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="safe-top"></div>
 
-  <div class="app-container">
+  <div class="app-container" id="app-container">
     <!-- 顶部导航栏 -->
     <header class="header">
       <div class="brand">
@@ -33,6 +36,9 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="btn-lock-site" class="icon-btn" title="锁定并退出" aria-label="锁定网站" style="display:none;">
+          🔒
+        </button>
         <button id="btn-open-settings" class="icon-btn" title="配置选项" aria-label="设置">
           ⚙️
         </button>
@@ -322,6 +328,46 @@ https://cf-worker.test.com/"></textarea>
             ⚠️ 重置为默认网址
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态弹窗：站点访问安全密码验证 (Deployment Security Lock) -->
+  <div class="auth-overlay" id="modal-auth" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="auth-card" id="auth-card">
+      <div class="auth-shield">
+        <div class="auth-shield-glow"></div>
+        <span class="auth-shield-icon">🔐</span>
+      </div>
+      <h2 class="auth-title" id="auth-title">安全访问验证</h2>
+      <p class="auth-subtitle" id="auth-subtitle">本站点已开启访问控制，请输入访问密码以解锁</p>
+      
+      <form id="auth-form" class="auth-form" onsubmit="return false;">
+        <div class="auth-input-group">
+          <div class="auth-input-wrapper">
+            <span class="auth-input-icon">🔑</span>
+            <input type="password" id="input-auth-password" class="auth-input" placeholder="请输入站点访问密码" autocomplete="current-password" autofocus required>
+            <button type="button" id="btn-toggle-password" class="auth-toggle-pwd" title="显示/隐藏密码" aria-label="显示/隐藏密码">
+              <span id="eye-icon">👁️</span>
+            </button>
+          </div>
+          <div class="auth-error-msg" id="auth-error-msg"></div>
+        </div>
+
+        <div class="auth-options">
+          <label class="auth-remember-label">
+            <input type="checkbox" id="auth-remember-me" checked>
+            <span>记住解锁状态 (7天内免密)</span>
+          </label>
+        </div>
+
+        <button type="submit" id="btn-auth-submit" class="btn-primary auth-submit-btn">
+          <span>🚀 验证并进入网站</span>
+        </button>
+      </form>
+      
+      <div class="auth-card-footer">
+        <span class="auth-safe-tag">🛡️ 端到端本地验证 · 绝不向云端泄露目标</span>
       </div>
     </div>
   </div>

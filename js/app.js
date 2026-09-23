@@ -10,7 +10,8 @@
   const STORAGE_KEYS = {
     TARGETS: 'net_reachability_targets',
     CONFIG: 'net_reachability_config',
-    LAST_TIME: 'net_reachability_last_time'
+    LAST_TIME: 'net_reachability_last_time',
+    AUTH_SESSION: 'net_reachability_auth_session'
   };
 
   const DEFAULT_CONFIG = {
@@ -44,6 +45,19 @@
 
   // DOM 元素缓存
   const dom = {
+    appContainer: document.getElementById('app-container'),
+    btnLockSite: document.getElementById('btn-lock-site'),
+    modalAuth: document.getElementById('modal-auth'),
+    authCard: document.getElementById('auth-card'),
+    authTitle: document.getElementById('auth-title'),
+    authSubtitle: document.getElementById('auth-subtitle'),
+    authForm: document.getElementById('auth-form'),
+    inputAuthPassword: document.getElementById('input-auth-password'),
+    btnTogglePassword: document.getElementById('btn-toggle-password'),
+    eyeIcon: document.getElementById('eye-icon'),
+    authErrorMsg: document.getElementById('auth-error-msg'),
+    authRememberMe: document.getElementById('auth-remember-me'),
+    btnAuthSubmit: document.getElementById('btn-auth-submit'),
     statTotal: document.getElementById('stat-total'),
     statOnline: document.getElementById('stat-online'),
     statTimeout: document.getElementById('stat-timeout'),
@@ -98,6 +112,173 @@
     inputTargetUrl: document.getElementById('input-target-url'),
     inputTargetGroup: document.getElementById('input-target-group'),
     textareaBatchUrls: document.getElementById('textarea-batch-urls')
+  };
+
+  // ================= 站点安全鉴权引擎 (AuthManager) =================
+
+  async function sha256(message) {
+    if (!window.crypto || !window.crypto.subtle) {
+      let hash = 0;
+      for (let i = 0; i < message.length; i++) {
+        hash = ((hash << 5) - hash) + message.charCodeAt(i);
+        hash |= 0;
+      }
+      return 'fallback_' + Math.abs(hash).toString(16);
+    }
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const AuthManager = {
+    config: {
+      enabled: false,
+      password: '',
+      passwordHash: '',
+      rememberDays: 7,
+      title: '安全访问验证',
+      subtitle: '本站点已开启访问控制，请输入访问密码以解锁'
+    },
+    expectedHash: '',
+
+    async init() {
+      // 1. 优先读取 window.AUTH_CONFIG (来自 config.js)
+      if (window.AUTH_CONFIG && typeof window.AUTH_CONFIG === 'object') {
+        Object.assign(this.config, window.AUTH_CONFIG);
+      } else {
+        // 2. 备选尝试读取 auth.json / auth.local.json
+        try {
+          const resp = await fetch('auth.json?_v=' + Date.now());
+          if (resp.ok) {
+            const data = await resp.json();
+            Object.assign(this.config, data);
+          }
+        } catch {}
+      }
+
+      // 计算并规范化目标验证 Hash
+      if (this.config.passwordHash) {
+        this.expectedHash = this.config.passwordHash.trim().toLowerCase();
+      } else if (this.config.password) {
+        this.expectedHash = await sha256(this.config.password.trim());
+      }
+
+      if (dom.authTitle && this.config.title) {
+        dom.authTitle.textContent = this.config.title;
+      }
+      if (dom.authSubtitle && this.config.subtitle) {
+        dom.authSubtitle.textContent = this.config.subtitle;
+      }
+    },
+
+    isProtected() {
+      return Boolean(this.config.enabled && (this.config.password || this.config.passwordHash));
+    },
+
+    isAuthenticated() {
+      if (!this.isProtected()) return true;
+
+      // 1. 优先查当前会话 (sessionStorage)
+      const sessionToken = sessionStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+      if (sessionToken && sessionToken === this.expectedHash) {
+        return true;
+      }
+
+      // 2. 查本地免密记录 (localStorage)
+      const localRecord = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+      if (localRecord) {
+        try {
+          const parsed = JSON.parse(localRecord);
+          if (parsed && parsed.token === this.expectedHash) {
+            if (!parsed.expiresAt || Date.now() < parsed.expiresAt) {
+              // 免密有效期内，同步写回当前会话
+              sessionStorage.setItem(STORAGE_KEYS.AUTH_SESSION, this.expectedHash);
+              return true;
+            } else {
+              localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+            }
+          }
+        } catch {
+          if (localRecord === this.expectedHash) return true;
+        }
+      }
+
+      return false;
+    },
+
+    async verifyPassword(inputPassword) {
+      if (!this.isProtected()) return true;
+      const cleanInput = (inputPassword || '').trim();
+      if (!cleanInput) return false;
+
+      const inputHash = await sha256(cleanInput);
+      const isMatch = (inputHash === this.expectedHash) || 
+                      (this.config.password && cleanInput === this.config.password.trim());
+
+      if (isMatch) {
+        sessionStorage.setItem(STORAGE_KEYS.AUTH_SESSION, this.expectedHash);
+
+        const rememberDays = parseInt(this.config.rememberDays, 10);
+        const shouldRemember = dom.authRememberMe ? dom.authRememberMe.checked : true;
+        if (shouldRemember && rememberDays > 0) {
+          const expiresAt = Date.now() + (rememberDays * 24 * 60 * 60 * 1000);
+          localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify({
+            token: this.expectedHash,
+            expiresAt
+          }));
+        }
+        return true;
+      }
+
+      return false;
+    },
+
+    lockSite() {
+      sessionStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+      localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+
+      if (state.isRunning) {
+        stopBatchTests();
+      }
+
+      // 核心安全隔离：清空内存与 DOM 中的所有目标网址信息，绝不泄露
+      state.targets = [];
+      dom.targetList.innerHTML = '';
+      dom.statTotal.textContent = '-';
+      dom.statOnline.textContent = '-';
+      dom.statTimeout.textContent = '-';
+      dom.statAvg.textContent = '-';
+      if (dom.countAll) dom.countAll.textContent = '0';
+      if (dom.countOnline) dom.countOnline.textContent = '0';
+      if (dom.countOffline) dom.countOffline.textContent = '0';
+      if (dom.catActiveBadge) dom.catActiveBadge.textContent = '🔒 已锁定';
+
+      // 高斯模糊与弹窗展现
+      if (dom.appContainer) dom.appContainer.classList.add('auth-locked');
+      if (dom.modalAuth) {
+        dom.modalAuth.style.display = 'flex';
+        void dom.modalAuth.offsetWidth;
+        dom.modalAuth.classList.add('active');
+      }
+      if (dom.inputAuthPassword) {
+        dom.inputAuthPassword.value = '';
+        setTimeout(() => dom.inputAuthPassword.focus(), 60);
+      }
+      if (dom.authErrorMsg) dom.authErrorMsg.style.display = 'none';
+      if (dom.btnLockSite) dom.btnLockSite.style.display = 'flex';
+    },
+
+    unlockSiteUI() {
+      if (dom.modalAuth) {
+        dom.modalAuth.classList.remove('active');
+        setTimeout(() => {
+          dom.modalAuth.style.display = 'none';
+        }, 300);
+      }
+      if (dom.appContainer) dom.appContainer.classList.remove('auth-locked');
+      if (dom.btnLockSite) dom.btnLockSite.style.display = this.isProtected() ? 'flex' : 'none';
+    }
   };
 
   // ================= 核心网络探测引擎 (ProbeEngine) =================
@@ -1423,25 +1604,124 @@
         showToast('🔄 已恢复为初始预置目标');
       }
     });
+
+    // 安全鉴权表单提交
+    if (dom.authForm) {
+      dom.authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pwd = (dom.inputAuthPassword ? dom.inputAuthPassword.value : '').trim();
+        if (!pwd) {
+          if (dom.authErrorMsg) {
+            dom.authErrorMsg.textContent = '请输入站点访问密码';
+            dom.authErrorMsg.style.display = 'block';
+          }
+          return;
+        }
+
+        if (dom.btnAuthSubmit) {
+          dom.btnAuthSubmit.disabled = true;
+          dom.btnAuthSubmit.innerHTML = '<span>⏳ 正在验证...</span>';
+        }
+
+        const isValid = await AuthManager.verifyPassword(pwd);
+
+        if (dom.btnAuthSubmit) {
+          dom.btnAuthSubmit.disabled = false;
+          dom.btnAuthSubmit.innerHTML = '<span>🚀 验证并进入网站</span>';
+        }
+
+        if (isValid) {
+          showToast('🔓 验证成功，欢迎访问');
+          AuthManager.unlockSiteUI();
+          await loadTargets();
+          if (state.config.autostart) {
+            setTimeout(() => runBatchTests(), 400);
+          }
+        } else {
+          if (dom.authErrorMsg) {
+            dom.authErrorMsg.textContent = '❌ 密码错误，请重新输入';
+            dom.authErrorMsg.style.display = 'block';
+          }
+          if (dom.authCard) {
+            dom.authCard.classList.remove('shake');
+            void dom.authCard.offsetWidth; // 触发回流重绘
+            dom.authCard.classList.add('shake');
+            setTimeout(() => dom.authCard.classList.remove('shake'), 500);
+          }
+          if (dom.inputAuthPassword) {
+            dom.inputAuthPassword.value = '';
+            dom.inputAuthPassword.focus();
+          }
+        }
+      });
+    }
+
+    // 密码显隐切换按钮
+    if (dom.btnTogglePassword && dom.inputAuthPassword) {
+      dom.btnTogglePassword.addEventListener('click', () => {
+        const isPassword = dom.inputAuthPassword.type === 'password';
+        dom.inputAuthPassword.type = isPassword ? 'text' : 'password';
+        if (dom.eyeIcon) {
+          dom.eyeIcon.textContent = isPassword ? '🙈' : '👁️';
+        }
+      });
+    }
+
+    // 锁定与退出按钮
+    if (dom.btnLockSite) {
+      dom.btnLockSite.addEventListener('click', () => {
+        if (confirm('确定要锁定网站并退出访问吗？')) {
+          AuthManager.lockSite();
+          showToast('🔒 站点已重新锁定');
+        }
+      });
+    }
   }
 
   // ================= 启动引导 =================
 
+  async function initAuth() {
+    await AuthManager.init();
+
+    if (!AuthManager.isProtected()) {
+      // 未配置密码保护：保持公开免密运行
+      if (dom.btnLockSite) dom.btnLockSite.style.display = 'none';
+      if (dom.modalAuth) dom.modalAuth.style.display = 'none';
+      if (dom.appContainer) dom.appContainer.classList.remove('auth-locked');
+      await loadTargets();
+      if (state.config.autostart) {
+        setTimeout(() => runBatchTests(), 500);
+      }
+      return;
+    }
+
+    // 配置了密码保护：
+    if (dom.btnLockSite) dom.btnLockSite.style.display = 'flex';
+
+    if (AuthManager.isAuthenticated()) {
+      // 已在有效期内免密通过验证
+      AuthManager.unlockSiteUI();
+      await loadTargets();
+      if (state.config.autostart) {
+        setTimeout(() => runBatchTests(), 500);
+      }
+    } else {
+      // 未通过验证：【严格前置隔离】
+      // 1. 绝不调用 loadTargets()
+      // 2. 绝不在页面 DOM 渲染测试网址与卡片
+      // 3. 绝不发起自动批量测速
+      AuthManager.lockSite();
+    }
+  }
+
   async function bootstrap() {
     loadConfig();
     initEvents();
-    await loadTargets();
+    await initAuth();
 
     // 注册 PWA Service Worker (若支持)
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
-
-    // 需求 4 方式 A：如果开启了进入页面自动检测，则在短暂首屏渲染后自启动
-    if (state.config.autostart) {
-      setTimeout(() => {
-        runBatchTests();
-      }, 500);
     }
   }
 
