@@ -30,7 +30,12 @@
     abortBatchController: null,
     activeFilter: 'all', // 'all' | 'online' | 'offline'
     isSortedByLatency: false,
-    completedCount: 0
+    completedCount: 0,
+    localNetwork: {
+      ipv6: null, // null: 未检测, true: 支持IPv6(双栈), false: 仅IPv4
+      isChecking: false,
+      lastChecked: 0
+    }
   };
 
   const CATEGORY_META = {
@@ -58,6 +63,10 @@
     authErrorMsg: document.getElementById('auth-error-msg'),
     authRememberMe: document.getElementById('auth-remember-me'),
     btnAuthSubmit: document.getElementById('btn-auth-submit'),
+    securityNotice: document.getElementById('security-notice'),
+    netEnvBadge: document.getElementById('net-env-badge'),
+    netEnvDot: document.getElementById('net-env-dot'),
+    netEnvText: document.getElementById('net-env-text'),
     statTotal: document.getElementById('stat-total'),
     statOnline: document.getElementById('stat-online'),
     statTimeout: document.getElementById('stat-timeout'),
@@ -275,6 +284,225 @@
       if (dom.btnLockSite) dom.btnLockSite.style.display = this.isProtected() ? 'flex' : 'none';
     }
   };
+
+  // ================= IPv6 本地协议栈与目标域名识别模块 =================
+
+  // 纯 IPv6 探测端点：国内权威高校清华大学 TUNA 镜像站 (三网直连无GFW) + 国际知名纯 IPv6 节点
+  const IPV6_PROBE_ENDPOINTS = [
+    'https://mirrors6.tuna.tsinghua.edu.cn/static/img/favicon.png',
+    'https://api6.ipify.org?format=json'
+  ];
+
+  /**
+   * 诊断当前浏览器/本地网络是否具备 IPv6 连通能力
+   * 采用国内高校 + 国际节点赛马竞速 (Promise.any)，毫秒级定性，无视 GFW 干扰
+   */
+  async function checkLocalIPv6(force = false) {
+    if (!force && state.localNetwork.ipv6 !== null && (Date.now() - state.localNetwork.lastChecked < 60000)) {
+      return state.localNetwork.ipv6;
+    }
+
+    state.localNetwork.isChecking = true;
+    updateNetEnvUI('checking');
+
+    const probe = async (url) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      try {
+        await fetch(url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now(), {
+          method: 'GET',
+          mode: 'no-cors',
+          cache: 'no-store',
+          credentials: 'omit',
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        return true;
+      } catch (err) {
+        clearTimeout(timer);
+        throw err;
+      }
+    };
+
+    try {
+      await Promise.any(IPV6_PROBE_ENDPOINTS.map(url => probe(url)));
+      state.localNetwork.ipv6 = true;
+      state.localNetwork.lastChecked = Date.now();
+      updateNetEnvUI('dual-stack');
+      return true;
+    } catch {
+      state.localNetwork.ipv6 = false;
+      state.localNetwork.lastChecked = Date.now();
+      updateNetEnvUI('ipv4-only');
+      return false;
+    } finally {
+      state.localNetwork.isChecking = false;
+    }
+  }
+
+  function updateNetEnvUI(status) {
+    if (!dom.netEnvBadge || !dom.netEnvText) return;
+
+    dom.netEnvBadge.classList.remove('checking', 'dual-stack', 'ipv4-only');
+
+    if (status === 'checking') {
+      dom.netEnvBadge.classList.add('checking');
+      dom.netEnvText.textContent = 'IPv6 检测中...';
+      dom.netEnvBadge.title = '正在探测当前网络是否具备 IPv6 访问能力...';
+    } else if (status === 'dual-stack') {
+      dom.netEnvBadge.classList.add('dual-stack');
+      dom.netEnvText.textContent = 'IPv4 / IPv6 双栈';
+      dom.netEnvBadge.title = '本地网络已成功连通 IPv6，可正常访问纯 IPv6 网站 (点击重新诊断)';
+    } else if (status === 'ipv4-only') {
+      dom.netEnvBadge.classList.add('ipv4-only');
+      dom.netEnvText.textContent = '仅 IPv4 (无 IPv6)';
+      dom.netEnvBadge.title = '当前网络未获得 IPv6 支持，纯 IPv6 网站将无法直连 (点击重新诊断)';
+    }
+  }
+
+  // 内存 DNS 缓存 (避免重复查询相同域名)
+  const domainDnsCache = new Map();
+
+  function isIPv6Host(hostname) {
+    if (!hostname) return false;
+    const raw = hostname.replace(/^\[|\]$/g, '');
+    return raw.includes(':');
+  }
+
+  function isIPv4Host(hostname) {
+    return /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+  }
+
+  /**
+   * 异步检测目标域名/地址是否属于 IPv6-Only
+   */
+  async function checkTargetIPv6Profile(url) {
+    let hostname = '';
+    try {
+      const u = new URL(url);
+      hostname = u.hostname;
+    } catch {
+      hostname = (url || '').replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+    }
+
+    if (!hostname) {
+      return { isIPv6Only: false, isDualStack: false, hasA: false, hasAAAA: false };
+    }
+
+    // 1. 若本身就是纯 IPv6 字面量地址 (如 [2408:8206:...])
+    if (isIPv6Host(hostname)) {
+      return { isIPv6Only: true, isDualStack: false, hasAAAA: true, hasA: false };
+    }
+
+    // 2. 若是纯 IPv4 字面量或本地地址
+    if (isIPv4Host(hostname) || hostname === 'localhost') {
+      return { isIPv6Only: false, isDualStack: false, hasAAAA: false, hasA: true };
+    }
+
+    // 3. 命中缓存直接返回
+    if (domainDnsCache.has(hostname)) {
+      return domainDnsCache.get(hostname);
+    }
+
+    // 4. DoH 探测：国内首选阿里 DNS，备用 Cloudflare DoH
+    async function queryDoH(domain, type) {
+      const targetType = type === 'A' ? 1 : 28;
+
+      // 4.1 阿里 DNS DoH (国内免翻毫秒级)
+      try {
+        const resp = await fetch(`https://dns.alidns.com/resolve?name=${encodeURIComponent(domain)}&type=${type}`, {
+          signal: AbortSignal.timeout(1200)
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json && Array.isArray(json.Answer)) {
+            return json.Answer.some(ans => ans.type === targetType);
+          }
+        }
+      } catch {}
+
+      // 4.2 Cloudflare DoH (国外与备选)
+      try {
+        const resp = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`, {
+          headers: { 'Accept': 'application/dns-json' },
+          signal: AbortSignal.timeout(1500)
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json && Array.isArray(json.Answer)) {
+            return json.Answer.some(ans => ans.type === targetType);
+          }
+        }
+      } catch {}
+
+      return false;
+    }
+
+    try {
+      const [hasA, hasAAAA] = await Promise.all([
+        queryDoH(hostname, 'A'),
+        queryDoH(hostname, 'AAAA')
+      ]);
+
+      const result = {
+        isIPv6Only: Boolean(hasAAAA && !hasA),
+        isDualStack: Boolean(hasAAAA && hasA),
+        hasA,
+        hasAAAA
+      };
+      domainDnsCache.set(hostname, result);
+      return result;
+    } catch {
+      const fallback = { isIPv6Only: false, isDualStack: false, hasA: false, hasAAAA: false };
+      domainDnsCache.set(hostname, fallback);
+      return fallback;
+    }
+  }
+
+  /**
+   * 对探测结果进行智能归因与 IPv6 诊断
+   */
+  async function finalizeProbeResult(target, res) {
+    let hostname = '';
+    try {
+      hostname = new URL(target.url).hostname;
+    } catch {
+      hostname = (target.url || '').replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+    }
+
+    if (isIPv6Host(hostname)) {
+      target.isIPv6Only = true;
+    }
+
+    // 若测试未通 (超时/阻断/失败)，智能诊断目标是否为 IPv6-only
+    if (res.status !== 'online') {
+      try {
+        const profile = await checkTargetIPv6Profile(target.url);
+        if (profile.isIPv6Only) {
+          target.isIPv6Only = true;
+          // 若本地网络未具备 IPv6，准确定性原因
+          if (state.localNetwork.ipv6 === false) {
+            res.status = 'unsupported_ipv6';
+            res.reason = '需 IPv6 网络 (本机当前网络缺少 IPv6 支持，无法直连)';
+          } else if (state.localNetwork.ipv6 === true) {
+            res.reason = '纯 IPv6 网站响应超时 (本机具备 IPv6，但目标服务端无响应)';
+          }
+        }
+      } catch {}
+    } else {
+      // 成功连通时，如果已有缓存或快速检查发现是纯 IPv6
+      if (target.isIPv6Only === undefined) {
+        try {
+          const profile = await checkTargetIPv6Profile(target.url);
+          if (profile.isIPv6Only) {
+            target.isIPv6Only = true;
+          }
+        } catch {}
+      }
+    }
+
+    return res;
+  }
 
   // ================= 核心网络探测引擎 (ProbeEngine) =================
 
@@ -526,18 +754,18 @@
           target.isRetrying = false;
           if (retryRes.status === 'online') {
             retryRes.reason = `重试成功连通 (${retryRes.latency}ms)`;
-            return retryRes;
+            return await finalizeProbeResult(target, retryRes);
           }
           if (retryRes.status === 'timeout') {
             retryRes.reason = `连接超时 (重试2次均 >${timeoutMs}ms 无响应)`;
-            return retryRes;
+            return await finalizeProbeResult(target, retryRes);
           }
-          return retryRes;
+          return await finalizeProbeResult(target, retryRes);
         }
       }
 
       target.isRetrying = false;
-      return res;
+      return await finalizeProbeResult(target, res);
     }
 
     // 精准模式：连续采样 3 次
@@ -557,14 +785,14 @@
       // 取中位数
       onlineResults.sort((a, b) => a.latency - b.latency);
       const mid = Math.floor(onlineResults.length / 2);
-      return onlineResults[mid];
+      return await finalizeProbeResult(target, onlineResults[mid]);
     } else {
       // 全失败，返回最后一个失败结果
       const last = results[results.length - 1] || { status: 'offline', latency: null, reason: '采样测试失败' };
       if (results.every(r => r.status === 'timeout')) {
         last.reason = `连接超时 (连续采样${sampleCount}次均无响应)`;
       }
-      return last;
+      return await finalizeProbeResult(target, last);
     }
   }
 
@@ -587,6 +815,11 @@
     state.isRunning = true;
     state.abortBatchController = new AbortController();
     state.completedCount = 0;
+
+    // 并发静默确保本地 IPv6 诊断状态有效
+    if (state.localNetwork.ipv6 === null || (Date.now() - state.localNetwork.lastChecked > 120000)) {
+      checkLocalIPv6();
+    }
 
     // 更新界面主按钮状态
     dom.btnTestIcon.textContent = '⏹';
@@ -729,7 +962,7 @@
     const total = targets.length;
     const onlineList = targets.filter(t => t.status === 'online');
     const online = onlineList.length;
-    const timeout = targets.filter(t => t.status === 'timeout' || t.status === 'blocked' || t.status === 'offline').length;
+    const timeout = targets.filter(t => t.status === 'timeout' || t.status === 'blocked' || t.status === 'offline' || t.status === 'unsupported_ipv6').length;
 
     dom.statTotal.textContent = total;
     dom.statOnline.textContent = online;
@@ -780,6 +1013,9 @@
     } else if (t.status === 'online') {
       statusClass = 'status-online';
       badgeHtml = `<span class="status-badge online">✅ ${t.latency} ms</span>`;
+    } else if (t.status === 'unsupported_ipv6') {
+      statusClass = 'status-ipv6-need';
+      badgeHtml = `<span class="status-badge status-ipv6-need">⚠️ 需 IPv6 环境</span>`;
     } else if (t.status === 'timeout') {
       statusClass = 'status-timeout';
       badgeHtml = `<span class="status-badge timeout">⏱️ 超时 >${t.latency || state.config.timeout}ms</span>`;
@@ -792,6 +1028,7 @@
     }
 
     const host = getHostDisplay(t.url);
+    const ipv6TagHtml = t.isIPv6Only ? '<span class="target-ipv6-tag" title="仅支持 IPv6 访问的目标网站">IPv6-Only</span>' : '';
 
     return `
       <div class="target-card ${statusClass} ${t.enabled === false ? 'disabled' : ''}" id="card-${t.id}" data-id="${t.id}">
@@ -799,6 +1036,7 @@
           <div class="target-header">
             <span class="target-name" title="${t.name}">${t.name}</span>
             ${t.group ? `<span class="target-group">${t.group}</span>` : ''}
+            ${ipv6TagHtml}
           </div>
           <span class="target-url" title="${t.url}">${host}</span>
           <div class="target-reason" style="font-size:10px;color:var(--text-muted);margin-top:2px;${t.reason ? '' : 'display:none;'}">${t.reason || ''}</div>
@@ -841,6 +1079,9 @@
     } else if (target.status === 'online') {
       el.classList.add('status-online');
       badgeHtml = `<span class="status-badge online">✅ ${target.latency} ms</span>`;
+    } else if (target.status === 'unsupported_ipv6') {
+      el.classList.add('status-ipv6-need');
+      badgeHtml = `<span class="status-badge status-ipv6-need">⚠️ 需 IPv6 环境</span>`;
     } else if (target.status === 'timeout') {
       el.classList.add('status-timeout');
       badgeHtml = `<span class="status-badge timeout">⏱️ 超时 >${target.latency || state.config.timeout}ms</span>`;
@@ -852,6 +1093,23 @@
       badgeHtml = `<span class="status-badge timeout">❌ 失败</span>`;
     } else {
       badgeHtml = '<span class="status-badge">待测试</span>';
+    }
+
+    // 动态同步 IPv6-Only 标签
+    const headerEl = el.querySelector('.target-header');
+    if (headerEl) {
+      let tagEl = headerEl.querySelector('.target-ipv6-tag');
+      if (target.isIPv6Only) {
+        if (!tagEl) {
+          tagEl = document.createElement('span');
+          tagEl.className = 'target-ipv6-tag';
+          tagEl.title = '仅支持 IPv6 访问的目标网站';
+          tagEl.textContent = 'IPv6-Only';
+          headerEl.appendChild(tagEl);
+        }
+      } else if (tagEl) {
+        tagEl.remove();
+      }
     }
 
     // 更新内容
@@ -898,7 +1156,7 @@
     if (state.activeFilter === 'online') {
       el.style.display = target.status === 'online' ? 'flex' : 'none';
     } else if (state.activeFilter === 'offline') {
-      const isBad = target.status === 'timeout' || target.status === 'blocked' || target.status === 'offline';
+      const isBad = target.status === 'timeout' || target.status === 'blocked' || target.status === 'offline' || target.status === 'unsupported_ipv6';
       el.style.display = isBad ? 'flex' : 'none';
     } else {
       el.style.display = 'flex';
@@ -1178,6 +1436,14 @@
   // ================= 事件绑定初始化 =================
 
   function initEvents() {
+    // 本地网络 IPv6 诊断刷新
+    if (dom.netEnvBadge) {
+      dom.netEnvBadge.addEventListener('click', () => {
+        showToast('正在重新诊断本地网络 IPv6 连通性...', 'info');
+        checkLocalIPv6(true);
+      });
+    }
+
     // 主控按钮：批量测试/停止
     dom.btnTestAll.addEventListener('click', () => {
       runBatchTests();
@@ -1712,6 +1978,8 @@
   async function bootstrap() {
     loadConfig();
     initEvents();
+    // 页面加载后立即在后台静默发起本地 IPv6 连通性诊断 (0 阻塞，与鉴权和加载并行)
+    checkLocalIPv6();
     await initAuth();
 
     // 注册 PWA Service Worker (若支持)

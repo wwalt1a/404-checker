@@ -48,10 +48,16 @@
       </div>
     </header>
 
-    <!-- 原则透明度提示 -->
-    <div class="security-notice">
-      <span class="icon">🛡️</span>
-      <span>所有测试由当前浏览器直发目标，真实反映您的网络运营商连通性。</span>
+    <!-- 原则透明度与本地网络环境诊断条 -->
+    <div class="security-notice" id="security-notice">
+      <div class="sec-notice-left">
+        <span class="icon">🛡️</span>
+        <span class="sec-notice-text">所有测试由当前浏览器直发目标，真实反映您的网络运营商连通性。</span>
+      </div>
+      <div class="net-env-badge checking" id="net-env-badge" title="点击重新诊断本地网络环境" role="button" tabindex="0">
+        <span class="net-env-dot" id="net-env-dot"></span>
+        <span class="net-env-text" id="net-env-text">IPv6 检测中...</span>
+      </div>
     </div>
 
     <!-- 核心统计仪表盘 -->
