@@ -9,3 +9,9 @@ desktop.ini
 # Editor directories
 .vscode/
 .idea/
+
+# Private local configuration (Do NOT upload to GitHub)
+targets.local.json
+*.local.json
+local-targets.json
+

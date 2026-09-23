@@ -15,7 +15,7 @@
 
   const DEFAULT_CONFIG = {
     timeout: 5000,       // 默认超时毫秒 (5秒)
-    concurrency: 6,      // 默认并发通道数
+    concurrency: 8,      // 默认并发通道数 (8通道高速并发)
     samples: 1,          // 默认采样次数 (1: 快速, 3: 精准中位数)
     autostart: true      // 打开网页自动测试
   };
@@ -103,9 +103,31 @@
   // ================= 核心网络探测引擎 (ProbeEngine) =================
 
   /**
+   * 安全构造探测 URL (规范化端口与防缓存参数)
+   * 完美适配形如 https://sub.fapcraft.cf:8888 的带端口地址与 Cloudflare Tunnel 路径
+   */
+  function buildProbeUrl(rawUrl) {
+    try {
+      const u = new URL(rawUrl);
+      u.searchParams.set('_probe_ts', Date.now().toString());
+      return u.toString();
+    } catch {
+      let normalized = rawUrl;
+      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+        normalized = 'https://' + normalized;
+      }
+      if (/:\d{2,5}$/.test(normalized)) {
+        normalized += '/';
+      }
+      const sep = normalized.includes('?') ? '&' : (normalized.endsWith('/') ? '?' : '/?');
+      return `${normalized}${sep}_probe_ts=${Date.now()}`;
+    }
+  }
+
+  /**
    * 单次探测目标 URL
    * 使用 mode: 'no-cors' 配合时间戳防缓存
-   * 由浏览器内核发起真实 TCP 握手与 TLS 交换
+   * 由浏览器内核发起真实 TCP 握手与 TLS 交换，支持自定义端口与 Cloudflare Tunnel 域名
    */
   async function probeOnce(url, timeoutMs, externalSignal) {
     const t0 = performance.now();
@@ -124,12 +146,11 @@
       });
     }
 
-    // 构造防缓存 URL
-    const sep = url.includes('?') ? '&' : '?';
-    const testUrl = `${url}${sep}_probe_ts=${Date.now()}`;
+    // 构造防缓存 URL (自动保留端口与根路径)
+    const testUrl = buildProbeUrl(url);
 
     try {
-      // mode: 'no-cors' 兼容任意第三方 HTTPS/HTTP 网站，不被同源策略阻断
+      // mode: 'no-cors' 兼容任意第三方 HTTPS/HTTP 网站及非标端口，不被同源策略阻断
       await fetch(testUrl, {
         method: 'GET',
         mode: 'no-cors',
@@ -165,20 +186,25 @@
         };
       }
 
-      // 诊断：若在极短时间内 (如 < 250ms) 立即报错失败，通常为本地防火墙拦截、TCP RST 重置或 DNS 劫持污染
+      // 诊断：若在极短时间内 (如 < 250ms) 立即报错失败，通常为防火墙拦截、TCP RST 重置、端口未开放或 DNS 污染
       if (elapsed < 250) {
         return {
           status: 'blocked',
           latency: elapsed,
-          reason: '快速重置/阻断 (TCP RST/DNS污染)'
+          reason: '快速拒绝/阻断 (端口未开放/TCP RST/DNS污染)'
         };
       }
 
-      // 其他网络错误 (如证书异常、链路阻断等)
+      // 其他网络错误 (如证书异常、自定义端口未开通或 SSL 未信任等)
+      let failureReason = err.message || '网络连接异常';
+      if (failureReason.includes('Failed to fetch')) {
+        failureReason = '连接失败 (证书未信任/端口无响应/网络不可达)';
+      }
+
       return {
         status: 'offline',
         latency: elapsed,
-        reason: err.message || '网络连接异常'
+        reason: failureReason
       };
     }
   }
@@ -284,7 +310,7 @@
     });
     updateDashboard();
 
-    const concurrency = Math.max(1, parseInt(state.config.concurrency, 10) || 6);
+    const concurrency = Math.max(1, parseInt(state.config.concurrency, 10) || 8);
     const timeout = parseInt(state.config.timeout, 10) || 5000;
     const samples = parseInt(state.config.samples, 10) || 1;
 
@@ -432,11 +458,13 @@
     }
   }
 
-  function getHostname(url) {
+  function getHostDisplay(url) {
     try {
-      return new URL(url).hostname;
+      const u = new URL(url);
+      // 若包含非标准端口 (例如 sub.fapcraft.cf:8888)，完整展示 host:port
+      return u.host || u.hostname;
     } catch {
-      return url;
+      return url.replace(/^https?:\/\//i, '').split('/')[0] || url;
     }
   }
 
@@ -469,7 +497,7 @@
       badgeHtml = `<span class="status-badge timeout">❌ 失败</span>`;
     }
 
-    const host = getHostname(t.url);
+    const host = getHostDisplay(t.url);
 
     return `
       <div class="target-card ${statusClass} ${t.enabled === false ? 'disabled' : ''}" id="card-${t.id}" data-id="${t.id}">
@@ -642,69 +670,98 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.3.0';
+    const TARGETS_VERSION = '1.4.0';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
+    let loadedTargets = null;
     const saved = localStorage.getItem(STORAGE_KEYS.TARGETS);
     if (saved && localVer === TARGETS_VERSION) {
       try {
-        state.targets = JSON.parse(saved);
-        if (Array.isArray(state.targets) && state.targets.length > 0) {
-          renderAllCards();
-          updateDashboard();
-          return;
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedTargets = parsed;
         }
       } catch (e) {
         console.error('Failed to parse local targets:', e);
       }
     }
 
-    // 若无本地缓存或版本升级，拉取最新的 targets.json (v1.3.0)
-    try {
-      const resp = await fetch('targets.json?_v=' + Date.now());
-      if (resp.ok) {
-        const data = await resp.json();
-        let newTargets = data.targets || [];
-        // 若本地已有旧数据且版本升级，保留用户自定义网址，无缝同步国外与国内新预置目标
-        if (saved) {
-          try {
-            const oldTargets = JSON.parse(saved);
-            const userCustomTargets = oldTargets.filter(t => (t.category || 'custom') === 'custom');
-            if (userCustomTargets.length > 0) {
-              const nonCustomNew = newTargets.filter(t => (t.category || 'custom') !== 'custom');
-              newTargets = userCustomTargets.concat(nonCustomNew);
-            }
-          } catch (e) {}
+    // 若无本地缓存或版本升级，拉取最新的 targets.json (v1.4.0)
+    if (!loadedTargets) {
+      try {
+        const resp = await fetch('targets.json?_v=' + Date.now());
+        if (resp.ok) {
+          const data = await resp.json();
+          let newTargets = data.targets || [];
+          if (saved) {
+            try {
+              const oldTargets = JSON.parse(saved);
+              const userCustomTargets = oldTargets.filter(t => (t.category || 'custom') === 'custom');
+              if (userCustomTargets.length > 0) {
+                const nonCustomNew = newTargets.filter(t => (t.category || 'custom') !== 'custom');
+                newTargets = userCustomTargets.concat(nonCustomNew);
+              }
+            } catch (e) {}
+          }
+          loadedTargets = newTargets;
+          localStorage.setItem('net_reachability_version', data.version || TARGETS_VERSION);
+        } else {
+          throw new Error('HTTP ' + resp.status);
         }
-        state.targets = newTargets;
-        localStorage.setItem('net_reachability_version', data.version || TARGETS_VERSION);
-        saveTargets();
-        renderAllCards();
-        updateDashboard();
-      } else {
-        throw new Error('HTTP ' + resp.status);
+      } catch (e) {
+        console.warn('Cannot fetch targets.json, fallback to built-in:', e);
+        loadedTargets = [
+          { id: 'custom_outlook', name: 'Outlook 邮箱网页', group: '常用办公', category: 'custom', url: 'https://outlook.live.com/', enabled: true },
+          { id: 'custom_wise', name: 'Wise 官网', group: '跨境理财', category: 'custom', url: 'https://wise.com/', enabled: true },
+          { id: 'custom_ifast', name: 'iFAST 官网', group: '境外银行', category: 'custom', url: 'https://www.ifastgb.com/', enabled: true },
+          { id: 'custom_schwab', name: '嘉信理财', group: '美股券商', category: 'custom', url: 'https://www.schwab.com/', enabled: true },
+          { id: 'custom_tradingview', name: 'TradingView', group: '行情看盘', category: 'custom', url: 'https://www.tradingview.com/', enabled: true },
+          { id: 'custom_ibkr', name: 'IBKR 盈透证券', group: '美股券商', category: 'custom', url: 'https://www.interactivebrokers.com/', enabled: true },
+          { id: 'custom_binance', name: '币安 Binance', group: '加密资产', category: 'custom', url: 'https://www.binance.com/', enabled: true },
+          { id: 'custom_htx', name: '火币 HTX', group: '加密资产', category: 'custom', url: 'https://www.htx.com/', enabled: true },
+          { id: 'sm_youtube', name: 'YouTube 视频', group: '社交媒体', category: 'overseas', url: 'https://www.youtube.com/', enabled: true },
+          { id: 'sm_instagram', name: 'Instagram 社交', group: '社交媒体', category: 'overseas', url: 'https://www.instagram.com/', enabled: true }
+        ];
       }
-    } catch (e) {
-      console.warn('Cannot fetch targets.json, fallback to built-in:', e);
-      state.targets = [
-        { id: 'custom_outlook', name: 'Outlook 邮箱网页', group: '常用办公', category: 'custom', url: 'https://outlook.live.com/', enabled: true },
-        { id: 'custom_wise', name: 'Wise 官网', group: '跨境理财', category: 'custom', url: 'https://wise.com/', enabled: true },
-        { id: 'custom_ifast', name: 'iFAST 官网', group: '境外银行', category: 'custom', url: 'https://www.ifastgb.com/', enabled: true },
-        { id: 'custom_schwab', name: '嘉信理财', group: '美股券商', category: 'custom', url: 'https://www.schwab.com/', enabled: true },
-        { id: 'custom_tradingview', name: 'TradingView', group: '行情看盘', category: 'custom', url: 'https://www.tradingview.com/', enabled: true },
-        { id: 'custom_ibkr', name: 'IBKR 盈透证券', group: '美股券商', category: 'custom', url: 'https://www.interactivebrokers.com/', enabled: true },
-        { id: 'custom_binance', name: '币安 Binance', group: '加密资产', category: 'custom', url: 'https://www.binance.com/', enabled: true },
-        { id: 'custom_htx', name: '火币 HTX', group: '加密资产', category: 'custom', url: 'https://www.htx.com/', enabled: true },
-        { id: 'sm_youtube', name: 'YouTube 视频', group: '社交媒体', category: 'overseas', url: 'https://www.youtube.com/', enabled: true },
-        { id: 'sm_instagram', name: 'Instagram 社交', group: '社交媒体', category: 'overseas', url: 'https://www.instagram.com/', enabled: true },
-        { id: 'game_steam', name: 'Steam 商店', group: '游戏平台', category: 'overseas', url: 'https://store.steampowered.com/', enabled: true },
-        { id: 'game_steam_community', name: 'Steam 社区', group: '游戏平台', category: 'overseas', url: 'https://steamcommunity.com/', enabled: true },
-        { id: 'game_epic', name: 'Epic Games 商城', group: '游戏平台', category: 'overseas', url: 'https://store.epicgames.com/', enabled: true }
-      ];
-      renderAllCards();
-      updateDashboard();
     }
+
+    // 🚀 核心特性：自动检测并载入本地私有配置 targets.local.json (受 .gitignore 保护，绝不上传 GitHub)
+    try {
+      const localResp = await fetch('targets.local.json?_v=' + Date.now());
+      if (localResp.ok) {
+        const localData = await localResp.json();
+        const privateTargets = localData.custom_targets || localData.targets || [];
+        if (Array.isArray(privateTargets) && privateTargets.length > 0) {
+          const formattedPrivates = privateTargets.map((t, idx) => ({
+            id: t.id || ('priv_' + idx),
+            name: t.name,
+            group: t.group || '私人服务',
+            category: 'custom',
+            url: t.url,
+            enabled: t.enabled !== false,
+            status: 'ready'
+          }));
+
+          const privIds = new Set(formattedPrivates.map(p => p.id));
+          const privUrls = new Set(formattedPrivates.map(p => p.url));
+          const otherTargets = loadedTargets.filter(t => !privIds.has(t.id) && !privUrls.has(t.url));
+
+          const otherCustom = otherTargets.filter(t => (t.category || 'custom') === 'custom');
+          const nonCustom = otherTargets.filter(t => (t.category || 'custom') !== 'custom');
+
+          // 将私人网站列表【置顶】在原来的自定义网址列表最上方
+          loadedTargets = [...formattedPrivates, ...otherCustom, ...nonCustom];
+        }
+      }
+    } catch {
+      // 本地私有文件不存在时静默忽略（适合云端公开部署环境）
+    }
+
+    state.targets = loadedTargets || [];
+    saveTargets();
+    renderAllCards();
+    updateDashboard();
   }
 
   function saveTargets() {
@@ -720,9 +777,12 @@
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // 若之前保存的是旧版本默认值 3000ms，自动迁移至新默认值 5000ms
+        // 自动迁移旧版本默认值
         if (parsed.timeout === 3000) {
           parsed.timeout = 5000;
+        }
+        if (parsed.concurrency === 6) {
+          parsed.concurrency = 8;
         }
         state.config = Object.assign({}, DEFAULT_CONFIG, parsed);
         saveConfig();
@@ -978,7 +1038,7 @@
       dom.manageItemsContainer.innerHTML = list.map((t, idx) => {
         const isFirst = idx === 0;
         const isLast = idx === list.length - 1;
-        const host = getHostname(t.url);
+        const host = getHostDisplay(t.url);
 
         return `
           <div class="manage-item" data-id="${t.id}" data-index="${idx}">
@@ -1137,7 +1197,7 @@
 
       const newTarget = {
         id: 'custom_' + Date.now(),
-        name: name || getHostname(url),
+        name: name || getHostDisplay(url),
         group: group,
         category: state.activeCategory || 'custom',
         url: url,
@@ -1181,14 +1241,22 @@
         let name = '';
         let url = line;
 
-        if (line.includes(',')) {
+        // 智能提取带端口的 URL (如 https://sub.fapcraft.cf:8888 或 sub.fapcraft.cf:8888)
+        const tokens = line.split(/\s+/);
+        const urlIndex = tokens.findIndex(t => t.startsWith('http://') || t.startsWith('https://') || /:\d{2,5}/.test(t));
+        if (urlIndex !== -1) {
+          url = tokens[urlIndex];
+          name = tokens.slice(0, urlIndex).join(' ').trim();
+          if (!name && urlIndex + 1 < tokens.length) {
+            name = tokens.slice(urlIndex + 1).join(' ').trim();
+          }
+        } else if (line.includes(',')) {
           const parts = line.split(',');
           name = parts[0].trim();
           url = parts.slice(1).join(',').trim();
-        } else if (line.includes(' ')) {
-          const parts = line.split(/\s+/);
-          name = parts[0].trim();
-          url = parts.slice(1).join(' ').trim();
+        } else if (tokens.length >= 2) {
+          url = tokens[tokens.length - 1];
+          name = tokens.slice(0, tokens.length - 1).join(' ');
         }
 
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -1197,8 +1265,8 @@
 
         parsedTargets.push({
           id: 'custom_' + Date.now() + '_' + idx,
-          name: name || getHostname(url),
-          group: currentCat === 'custom' ? '自选常用' : (currentCat === 'domestic' ? '国内源' : '国外'),
+          name: name || getHostDisplay(url),
+          group: currentCat === 'custom' ? (url.includes(':') ? '端口服务' : '自选常用') : (currentCat === 'domestic' ? '国内源' : '国外'),
           category: currentCat,
           url: url,
           enabled: true,
