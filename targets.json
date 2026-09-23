@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "targets": [
     {
       "id": "custom_gh_proxy",
@@ -230,7 +230,7 @@
       "name": "任天堂 Nintendo 官网",
       "group": "游戏平台",
       "category": "overseas",
-      "url": "https://www.nintendo.com/",
+      "url": "https://www.nintendo.com/us/",
       "enabled": true
     },
     {

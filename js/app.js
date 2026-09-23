@@ -582,14 +582,6 @@
       clearTimeout(timeoutId);
       const elapsed = Math.round(performance.now() - t0);
 
-      if (isTimeout) {
-        return {
-          status: 'timeout',
-          latency: elapsed,
-          reason: `连接超时 (> ${timeoutMs}ms 无响应)`
-        };
-      }
-
       if (externalSignal && externalSignal.aborted) {
         return {
           status: 'ready',
@@ -626,37 +618,13 @@
       if (urlObj && (!externalSignal || !externalSignal.aborted)) {
         const hasCustomPort = Boolean(urlObj.port && urlObj.port !== '80' && urlObj.port !== '443');
 
-        // 容错向量 A：Cloudflare 边缘节点探针 (/cdn-cgi/trace)
-        // Cloudflare Tunnel 或 CDN 代理网站在主路径受限时，边缘节点仍可直接返回 200
-        try {
-          const cfCtrl = new AbortController();
-          const cfTimeout = setTimeout(() => cfCtrl.abort(), Math.min(timeoutMs, 2000));
-          const cfT0 = performance.now();
-          await fetch(`${urlObj.origin}/cdn-cgi/trace?_probe_ts=${Date.now()}`, {
-            method: 'GET',
-            mode: 'no-cors',
-            cache: 'no-store',
-            credentials: 'omit',
-            signal: cfCtrl.signal
-          });
-          clearTimeout(cfTimeout);
-          const cfElapsed = Math.round(performance.now() - cfT0);
-          return {
-            status: 'online',
-            latency: Math.max(1, cfElapsed),
-            reason: '连接成功 (通过Cloudflare边缘校验)'
-          };
-        } catch {
-          // 边缘节点未命中或非 Cloudflare 托管，继续向下
-        }
-
-        // 容错向量 B：轻量静态图标探针 (/favicon.ico)
-        // 部分站点动态路由开启安全拦截，但静态文件允许跨域获取
+        // 容错向量 A：轻量静态图标探针 (/favicon.ico)
+        // 针对任天堂等主路径慢重定向、大型 HTML 或 CDN 边缘未命中导致超时的站点，直接探测轻量静态资源验证存活性
         try {
           const favCtrl = new AbortController();
-          const favTimeout = setTimeout(() => favCtrl.abort(), Math.min(timeoutMs, 2000));
+          const favTimeout = setTimeout(() => favCtrl.abort(), 2000);
           const favT0 = performance.now();
-          await fetch(`${urlObj.origin}/favicon.ico?_probe_ts=${Date.now()}`, {
+          await fetch(`${urlObj.origin}/favicon.ico`, {
             method: 'GET',
             mode: 'no-cors',
             cache: 'no-store',
@@ -674,6 +642,30 @@
           // 静态资源同样受限，继续向下
         }
 
+        // 容错向量 B：Cloudflare 边缘节点探针 (/cdn-cgi/trace)
+        // Cloudflare Tunnel 或 CDN 代理网站在主路径受限时，边缘节点仍可直接返回 200
+        try {
+          const cfCtrl = new AbortController();
+          const cfTimeout = setTimeout(() => cfCtrl.abort(), 2000);
+          const cfT0 = performance.now();
+          await fetch(`${urlObj.origin}/cdn-cgi/trace`, {
+            method: 'GET',
+            mode: 'no-cors',
+            cache: 'no-store',
+            credentials: 'omit',
+            signal: cfCtrl.signal
+          });
+          clearTimeout(cfTimeout);
+          const cfElapsed = Math.round(performance.now() - cfT0);
+          return {
+            status: 'online',
+            latency: Math.max(1, cfElapsed),
+            reason: '连接成功 (通过Cloudflare边缘校验)'
+          };
+        } catch {
+          // 边缘节点未命中或非 Cloudflare 托管，继续向下
+        }
+
         // 容错向量 C：自建私有服务 CORP 同源策略兼容识别 (Cross-Origin-Resource-Policy Compatible Engine)
         // 严格约束适用范围：仅针对「自定义分类」且带有「非标准端口」(如 :8888) 的自建私有服务 (如 Kutt、Sub-Store 等部署了 Helmet CORP 头)
         // 绝对禁止应用于海外公网网站 (如 Telegram、Twitter、YouTube 等)，海外公网网站连接失败 100% 为 GFW 阻断，严禁误报为 CORP 在线！
@@ -684,6 +676,15 @@
             reason: '服务在线 (HTTP已响应，触发CORP同源策略保护)'
           };
         }
+      }
+
+      // 若容错向量也无法连通，且原本属于超时：明确判定为连接超时
+      if (isTimeout) {
+        return {
+          status: 'timeout',
+          latency: elapsed,
+          reason: `连接超时 (> ${timeoutMs}ms 无响应)`
+        };
       }
 
       // 海外公网网站若未成功建立通信，明确判定为网络阻断 (GFW SNI 阻断 / TCP RST / DNS 污染)
@@ -1200,7 +1201,7 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.5.0';
+    const TARGETS_VERSION = '1.6.0';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
