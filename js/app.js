@@ -186,6 +186,35 @@
         };
       }
 
+      // 深度容错：如果主请求发生异常 (Failed to fetch) 但耗时 > 200ms，说明 TCP/TLS 链路实际已打通，
+      // 极大概率是服务端安全策略 (如 Helmet 下发的 Cross-Origin-Resource-Policy: same-origin) 触发了浏览器跨域阻断。
+      // 我们向 Cloudflare / 边缘轻量节点 (/cdn-cgi/trace) 触发链路备选探测验证真实连通性
+      if (elapsed >= 200 && (!externalSignal || !externalSignal.aborted)) {
+        try {
+          const u = new URL(url);
+          const fallbackUrl = `${u.origin}/cdn-cgi/trace?_probe_ts=${Date.now()}`;
+          const fbCtrl = new AbortController();
+          const fbTimeout = setTimeout(() => fbCtrl.abort(), Math.min(timeoutMs, 3000));
+          const fbT0 = performance.now();
+          await fetch(fallbackUrl, {
+            method: 'GET',
+            mode: 'no-cors',
+            cache: 'no-store',
+            credentials: 'omit',
+            signal: fbCtrl.signal
+          });
+          clearTimeout(fbTimeout);
+          const fbElapsed = Math.round(performance.now() - fbT0);
+          return {
+            status: 'online',
+            latency: Math.max(1, fbElapsed),
+            reason: '连接成功 (主路径受CORP跨域保护，边缘链路已通)'
+          };
+        } catch {
+          // 备选路径亦失败，继续向下判定常规错误
+        }
+      }
+
       // 诊断：若在极短时间内 (如 < 250ms) 立即报错失败，通常为防火墙拦截、TCP RST 重置、端口未开放或 DNS 污染
       if (elapsed < 250) {
         return {
