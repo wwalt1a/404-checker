@@ -1,0 +1,12 @@
+# Version control
+.git
+.wrangler
+
+# Apache specific files
+.htaccess
+api/config.php
+
+# Local scripts & history
+*.bat
+inject_to_vscdb.py
+404_checker_full_chat_history.md
