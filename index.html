@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="404 checker: 纯浏览器端发起的批量目标网址网络可达性与请求延迟检测工具，真实反映当前手机/网络环境连通性。">
+  <title>404 checker - 网络可达性与延迟检测</title>
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="safe-top"></div>
+
+  <div class="app-container">
+    <!-- 顶部导航栏 -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <h1 class="brand-title">404 checker</h1>
+          <div class="brand-sub">
+            <span class="pulse-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;margin-right:4px;"></span>
+            手机浏览器直连测试 · 纯静态零代理
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-open-settings" class="icon-btn" title="配置选项" aria-label="设置">
+          ⚙️
+        </button>
+        <button id="btn-open-import" class="icon-btn" title="添加/导入目标" aria-label="添加目标">
+          ➕
+        </button>
+      </div>
+    </header>
+
+    <!-- 原则透明度提示 -->
+    <div class="security-notice">
+      <span class="icon">🛡️</span>
+      <span>所有测试由当前浏览器直发目标，真实反映您的网络运营商连通性。</span>
+    </div>
+
+    <!-- 核心统计仪表盘 -->
+    <section class="stats-grid">
+      <div class="stat-card stat-total">
+        <div class="stat-val" id="stat-total">0</div>
+        <div class="stat-label">总目标</div>
+      </div>
+      <div class="stat-card stat-online">
+        <div class="stat-val" id="stat-online">0</div>
+        <div class="stat-label">✅ 可达</div>
+      </div>
+      <div class="stat-card stat-timeout">
+        <div class="stat-val" id="stat-timeout">0</div>
+        <div class="stat-label">❌ 异常</div>
+      </div>
+      <div class="stat-card stat-avg">
+        <div class="stat-val" id="stat-avg">-</div>
+        <div class="stat-label">⚡ 均延</div>
+      </div>
+    </section>
+
+    <!-- 动态进度条 -->
+    <div class="progress-container" id="progress-container">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <!-- 主控操作栏 -->
+    <section class="action-banner">
+      <div class="btn-row-main">
+        <button id="btn-test-all" class="btn-primary">
+          <span id="btn-test-icon">▶</span>
+          <span id="btn-test-text">开始批量测试全部</span>
+        </button>
+        <button id="btn-copy-reachable" class="btn-secondary" title="一键复制全部可达网址">
+          📋 复制可用
+        </button>
+      </div>
+    </section>
+
+    <!-- 网址分类下拉式选择长条栏 (自定义网址 / 国外网址 / 国内网址) -->
+    <section class="category-dropdown-container">
+      <div class="category-bar" id="category-bar" role="button" aria-haspopup="true" aria-expanded="false" tabindex="0">
+        <div class="category-bar-left">
+          <span class="category-icon" id="cat-active-icon">🛠️</span>
+          <div class="category-info">
+            <span class="category-name" id="cat-active-name">自定义网址</span>
+            <span class="category-badge" id="cat-active-badge">0 个目标</span>
+          </div>
+        </div>
+        <div class="category-bar-right">
+          <span class="category-switch-tip">切换分类</span>
+          <span class="category-chevron" id="cat-chevron">▾</span>
+        </div>
+      </div>
+
+      <!-- 下拉弹出菜单 -->
+      <div class="category-menu" id="category-menu">
+        <div class="category-menu-item active" data-cat="custom">
+          <div class="cat-item-left">
+            <span class="cat-item-icon">🛠️</span>
+            <div>
+              <div class="cat-item-title">自定义网址</div>
+              <div class="cat-item-desc">自配专属测速目标，支持自由排序与增删</div>
+            </div>
+          </div>
+          <div class="cat-item-meta">
+            <span class="cat-item-count" id="cat-count-custom">0</span>
+            <span class="cat-item-check">✓</span>
+          </div>
+        </div>
+
+        <div class="category-menu-item" data-cat="overseas">
+          <div class="cat-item-left">
+            <span class="cat-item-icon">🌐</span>
+            <div>
+              <div class="cat-item-title">国外网址</div>
+              <div class="cat-item-desc">GitHub、Cloudflare、Outlook、NPM 等</div>
+            </div>
+          </div>
+          <div class="cat-item-meta">
+            <span class="cat-item-count" id="cat-count-overseas">0</span>
+            <span class="cat-item-check">✓</span>
+          </div>
+        </div>
+
+        <div class="category-menu-item" data-cat="domestic">
+          <div class="cat-item-left">
+            <span class="cat-item-icon">🇨🇳</span>
+            <div>
+              <div class="cat-item-title">国内网址</div>
+              <div class="cat-item-desc">百度、清华源、中科大、阿里/腾讯云等</div>
+            </div>
+          </div>
+          <div class="cat-item-meta">
+            <span class="cat-item-count" id="cat-count-domestic">0</span>
+            <span class="cat-item-check">✓</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 筛选与工具快捷栏 -->
+    <section class="toolbar">
+      <div class="filter-pills">
+        <button class="pill-btn active" data-filter="all" id="pill-all">全部 (<span id="count-all">0</span>)</button>
+        <button class="pill-btn" data-filter="online" id="pill-online">可达 (<span id="count-online">0</span>)</button>
+        <button class="pill-btn" data-filter="offline" id="pill-offline">异常 (<span id="count-offline">0</span>)</button>
+      </div>
+      <div class="tools-group">
+        <button id="btn-sort" class="tool-btn" title="按延迟升序排序">
+          📶 延迟排序
+        </button>
+      </div>
+    </section>
+
+    <!-- 目标卡片列表容器 -->
+    <main class="target-list" id="target-list">
+      <!-- 由 JavaScript 动态渲染卡片 -->
+      <div class="empty-state">
+        <div class="icon">⏳</div>
+        <div>正在载入默认目标网址...</div>
+      </div>
+    </main>
+
+    <!-- 底部状态与说明 -->
+    <footer class="footer-info">
+      <div id="last-updated-text">最后检测时间：未测试</div>
+      <div class="footer-note">
+        适配 Cloudflare Pages · 静态托管即开即用
+      </div>
+      <div class="footer-github">
+        <a href="https://github.com/wwalt1a/404-checker" target="_blank" rel="noopener noreferrer" class="github-link" title="在 GitHub 查看源码与一键部署">
+          <svg class="github-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span class="github-text">GitHub 开源仓库</span>
+        </a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 模态弹窗：参数设置 -->
+  <div class="modal-overlay" id="modal-settings">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙️ 探测参数设置</h3>
+        <button class="modal-close" data-close="modal-settings">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="setting-timeout">单个目标超时阈值 (Timeout)</label>
+          <select id="setting-timeout" class="form-select">
+            <option value="1500">1.5 秒 (快速淘汰)</option>
+            <option value="3000">3.0 秒 (常用)</option>
+            <option value="5000" selected>5.0 秒 (推荐默认)</option>
+            <option value="8000">8.0 秒 (超长连接)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="setting-concurrency">并发探测通道数 (Concurrency)</label>
+          <select id="setting-concurrency" class="form-select">
+            <option value="3">3 个通道 (适合弱网 / 老旧手机)</option>
+            <option value="6" selected>6 个通道 (推荐，平衡稳定)</option>
+            <option value="10">10 个通道 (高速 WiFi / 快速完成)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="setting-samples">采样精度模式</label>
+          <select id="setting-samples" class="form-select">
+            <option value="1" selected>快速模式 (单次测试，极速出结果)</option>
+            <option value="3">精准模式 (连续采样 3 次取中位数，滤除抖动)</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">页面打开自动测试</div>
+            <div style="font-size:12px;color:var(--text-muted);">进入网页即自动开始批量探测</div>
+          </div>
+          <input type="checkbox" id="setting-autostart" checked style="width:20px;height:20px;accent-color:#3b82f6;cursor:pointer;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" data-close="modal-settings" style="padding:8px 16px;min-height:38px;">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态弹窗：添加 / 批量导入 -->
+  <div class="modal-overlay" id="modal-import">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">➕ 目标管理与导入</h3>
+        <button class="modal-close" data-close="modal-import">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 选项卡切换 -->
+        <div style="display:flex;gap:6px;margin-bottom:16px;">
+          <button id="tab-manage-list" class="pill-btn active" style="flex:1;padding:8px 4px;font-size:12px;">📋 排序与管理</button>
+          <button id="tab-add-batch" class="pill-btn" style="flex:1;padding:8px 4px;font-size:12px;">📝 批量导入/替换</button>
+          <button id="tab-add-single" class="pill-btn" style="flex:1;padding:8px 4px;font-size:12px;">➕ 单个添加</button>
+        </div>
+
+        <!-- 1. 列表排序与管理面板 -->
+        <div id="panel-manage-list">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:12px;color:var(--text-muted);">使用 ▲ ▼ 调整测试顺序</span>
+            <button id="btn-export-json" class="tool-btn" style="font-size:11px;">
+              💾 导出 targets.json
+            </button>
+          </div>
+          <div id="manage-items-container" class="manage-items-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px;">
+            <!-- 由 JS 渲染管理项 -->
+          </div>
+        </div>
+
+        <!-- 2. 批量导入/替换面板 -->
+        <div id="panel-add-batch" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">粘贴网址列表（每行一个 URL，可前缀“名称, URL”）：</label>
+            <textarea id="textarea-batch-urls" class="form-textarea" style="min-height:160px;" placeholder="例如：
+官网, https://example.com/
+API节点, https://api.example.com/
+https://backup.example.com/
+https://cf-worker.test.com/"></textarea>
+          </div>
+          <div class="form-group" style="background:rgba(0,0,0,0.25);padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+            <label class="form-label" style="margin-bottom:8px;">导入与排序模式：</label>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="radio" name="batch-mode" value="replace" checked style="accent-color:#3b82f6;">
+                <span style="color:#60a5fa;font-weight:600;">覆盖并替换全部列表（严格按上方粘贴顺序排列）</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="radio" name="batch-mode" value="append" style="accent-color:#3b82f6;">
+                <span>追加到现有列表末尾</span>
+              </label>
+            </div>
+          </div>
+          <button id="btn-save-batch" class="btn-primary" style="width:100%;min-height:44px;">确认解析并保存排序</button>
+        </div>
+
+        <!-- 3. 单个添加面板 -->
+        <div id="panel-add-single" style="display:none;">
+          <div class="form-group">
+            <label class="form-label" for="input-target-name">目标显示名称</label>
+            <input type="text" id="input-target-name" class="form-input" placeholder="例如：我的备用镜像站">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-target-url">目标 URL 地址</label>
+            <input type="url" id="input-target-url" class="form-input" placeholder="https://example.com/">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-target-group">分组标签 (可选)</label>
+            <input type="text" id="input-target-group" class="form-input" placeholder="自定义">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="select-insert-pos">插入排序位置</label>
+            <select id="select-insert-pos" class="form-select">
+              <option value="top">置于最顶端 (第 1 位优先测试)</option>
+              <option value="bottom" selected>置于列表末尾</option>
+            </select>
+          </div>
+          <button id="btn-save-single" class="btn-primary" style="width:100%;min-height:44px;">保存并添加到列表</button>
+        </div>
+
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-muted);">恢复预置 26 个默认目标</span>
+          <button id="btn-reset-defaults" class="tool-btn" style="color:#ef4444;border-color:rgba(239,68,68,0.3);">
+            ⚠️ 重置为默认网址
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 提示容器 -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- 核心逻辑脚本 -->
+  <script src="js/app.js"></script>
+</body>
+</html>

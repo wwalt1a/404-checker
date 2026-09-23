@@ -1,0 +1,453 @@
+{
+  "version": "1.3.0",
+  "targets": [
+    {
+      "id": "custom_outlook",
+      "name": "Outlook 邮箱网页",
+      "group": "常用办公",
+      "category": "custom",
+      "url": "https://outlook.live.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_wise",
+      "name": "Wise 官网",
+      "group": "跨境理财",
+      "category": "custom",
+      "url": "https://wise.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_ifast",
+      "name": "iFAST 官网",
+      "group": "境外银行",
+      "category": "custom",
+      "url": "https://www.ifastgb.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_schwab",
+      "name": "嘉信理财",
+      "group": "美股券商",
+      "category": "custom",
+      "url": "https://www.schwab.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_tradingview",
+      "name": "TradingView",
+      "group": "行情看盘",
+      "category": "custom",
+      "url": "https://www.tradingview.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_ibkr",
+      "name": "IBKR 盈透证券",
+      "group": "美股券商",
+      "category": "custom",
+      "url": "https://www.interactivebrokers.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_binance",
+      "name": "币安 Binance",
+      "group": "加密资产",
+      "category": "custom",
+      "url": "https://www.binance.com/",
+      "enabled": true
+    },
+    {
+      "id": "custom_htx",
+      "name": "火币 HTX",
+      "group": "加密资产",
+      "category": "custom",
+      "url": "https://www.htx.com/",
+      "enabled": true
+    },
+    {
+      "id": "sm_youtube",
+      "name": "YouTube 视频",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://www.youtube.com/",
+      "enabled": true
+    },
+    {
+      "id": "sm_instagram",
+      "name": "Instagram 社交",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://www.instagram.com/",
+      "enabled": true
+    },
+    {
+      "id": "sm_x",
+      "name": "X (原 Twitter)",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://x.com/",
+      "enabled": true
+    },
+    {
+      "id": "sm_telegram",
+      "name": "Telegram 网页版",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://web.telegram.org/",
+      "enabled": true
+    },
+    {
+      "id": "sm_facebook",
+      "name": "Facebook 社交",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://www.facebook.com/",
+      "enabled": true
+    },
+    {
+      "id": "sm_reddit",
+      "name": "Reddit 社区",
+      "group": "社交媒体",
+      "category": "overseas",
+      "url": "https://www.reddit.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_steam",
+      "name": "Steam 商店",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://store.steampowered.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_steam_community",
+      "name": "Steam 社区",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://steamcommunity.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_epic",
+      "name": "Epic Games 商城",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://store.epicgames.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_battlenet",
+      "name": "暴雪战网 Battle.net",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://battle.net/",
+      "enabled": true
+    },
+    {
+      "id": "game_playstation",
+      "name": "PlayStation 官网 (PSN)",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.playstation.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_xbox",
+      "name": "Xbox 官方商城",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.xbox.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_nintendo",
+      "name": "任天堂 Nintendo 官网",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.nintendo.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_ea",
+      "name": "EA 游戏平台官网",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.ea.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_ubisoft",
+      "name": "Ubisoft 育碧商城",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.ubisoft.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_riot",
+      "name": "Riot Games 拳头游戏",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.riotgames.com/",
+      "enabled": true
+    },
+    {
+      "id": "game_twitch",
+      "name": "Twitch 游戏直播平台",
+      "group": "游戏平台",
+      "category": "overseas",
+      "url": "https://www.twitch.tv/",
+      "enabled": true
+    },
+    {
+      "id": "gh_main",
+      "name": "GitHub 官网",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://github.com/",
+      "enabled": true
+    },
+    {
+      "id": "gh_api",
+      "name": "GitHub API",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://api.github.com/",
+      "enabled": true
+    },
+    {
+      "id": "gh_raw",
+      "name": "GitHub Raw 文件",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://raw.githubusercontent.com/",
+      "enabled": true
+    },
+    {
+      "id": "gh_assets",
+      "name": "GitHub 静态资源 Assets",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://github.githubassets.com/",
+      "enabled": true
+    },
+    {
+      "id": "gh_release",
+      "name": "GitHub Releases 存储",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://objects.githubusercontent.com/",
+      "enabled": true
+    },
+    {
+      "id": "gh_gist",
+      "name": "GitHub Gist 代码片段",
+      "group": "代码托管",
+      "category": "overseas",
+      "url": "https://gist.github.com/",
+      "enabled": true
+    },
+    {
+      "id": "hf_main",
+      "name": "Hugging Face 官网",
+      "group": "AI与模型",
+      "category": "overseas",
+      "url": "https://huggingface.co/",
+      "enabled": true
+    },
+    {
+      "id": "hf_co",
+      "name": "Hugging Face 权重源 (hf.co)",
+      "group": "AI与模型",
+      "category": "overseas",
+      "url": "https://hf.co/",
+      "enabled": true
+    },
+    {
+      "id": "cf_main",
+      "name": "Cloudflare 官网",
+      "group": "基础设施",
+      "category": "overseas",
+      "url": "https://www.cloudflare.com/",
+      "enabled": true
+    },
+    {
+      "id": "cf_cdnjs",
+      "name": "Cloudflare CDNJS",
+      "group": "基础设施",
+      "category": "overseas",
+      "url": "https://cdnjs.cloudflare.com/",
+      "enabled": true
+    },
+    {
+      "id": "vercel_main",
+      "name": "Vercel 托管平台",
+      "group": "基础设施",
+      "category": "overseas",
+      "url": "https://vercel.com/",
+      "enabled": true
+    },
+    {
+      "id": "supabase_main",
+      "name": "Supabase 云后端",
+      "group": "基础设施",
+      "category": "overseas",
+      "url": "https://supabase.com/",
+      "enabled": true
+    },
+    {
+      "id": "npm_official",
+      "name": "NPM 官方源",
+      "group": "包管理",
+      "category": "overseas",
+      "url": "https://registry.npmjs.org/",
+      "enabled": true
+    },
+    {
+      "id": "pypi_official",
+      "name": "Python PyPI 官方源",
+      "group": "包管理",
+      "category": "overseas",
+      "url": "https://pypi.org/",
+      "enabled": true
+    },
+    {
+      "id": "docker_hub",
+      "name": "Docker Hub 官方镜像",
+      "group": "包管理",
+      "category": "overseas",
+      "url": "https://hub.docker.com/",
+      "enabled": true
+    },
+    {
+      "id": "cdn_jsdelivr",
+      "name": "jsDelivr 开源 CDN",
+      "group": "前端 CDN",
+      "category": "overseas",
+      "url": "https://cdn.jsdelivr.net/",
+      "enabled": true
+    },
+    {
+      "id": "cdn_unpkg",
+      "name": "UNPKG 开源 CDN",
+      "group": "前端 CDN",
+      "category": "overseas",
+      "url": "https://unpkg.com/",
+      "enabled": true
+    },
+    {
+      "id": "google_search",
+      "name": "Google 搜索服务",
+      "group": "全球服务",
+      "category": "overseas",
+      "url": "https://www.google.com/",
+      "enabled": true
+    },
+    {
+      "id": "ms_main",
+      "name": "Microsoft 官网",
+      "group": "全球服务",
+      "category": "overseas",
+      "url": "https://www.microsoft.com/",
+      "enabled": true
+    },
+    {
+      "id": "ms_outlook",
+      "name": "Outlook 邮箱网页版",
+      "group": "全球服务",
+      "category": "overseas",
+      "url": "https://outlook.live.com/",
+      "enabled": true
+    },
+    {
+      "id": "apple_main",
+      "name": "Apple 官网",
+      "group": "全球服务",
+      "category": "overseas",
+      "url": "https://www.apple.com/",
+      "enabled": true
+    },
+    {
+      "id": "baidu_main",
+      "name": "百度 (国内基准)",
+      "group": "国内节点",
+      "category": "domestic",
+      "url": "https://www.baidu.com/",
+      "enabled": true
+    },
+    {
+      "id": "npm_mirror",
+      "name": "淘宝 NPM 镜像 (npmmirror)",
+      "group": "国内源",
+      "category": "domestic",
+      "url": "https://registry.npmmirror.com/",
+      "enabled": true
+    },
+    {
+      "id": "tsinghua_mirror",
+      "name": "清华大学开源镜像站",
+      "group": "国内源",
+      "category": "domestic",
+      "url": "https://mirrors.tuna.tsinghua.edu.cn/",
+      "enabled": true
+    },
+    {
+      "id": "ustc_mirror",
+      "name": "中科大开源镜像站 USTC",
+      "group": "国内源",
+      "category": "domestic",
+      "url": "https://mirrors.ustc.edu.cn/",
+      "enabled": true
+    },
+    {
+      "id": "huawei_mirror",
+      "name": "华为云开源镜像站",
+      "group": "国内源",
+      "category": "domestic",
+      "url": "https://mirrors.huaweicloud.com/",
+      "enabled": true
+    },
+    {
+      "id": "aliyun_main",
+      "name": "阿里云官网",
+      "group": "国内节点",
+      "category": "domestic",
+      "url": "https://www.aliyun.com/",
+      "enabled": true
+    },
+    {
+      "id": "tencent_cloud",
+      "name": "腾讯云官网",
+      "group": "国内节点",
+      "category": "domestic",
+      "url": "https://cloud.tencent.com/",
+      "enabled": true
+    },
+    {
+      "id": "163_mirror",
+      "name": "网易 163 开源镜像",
+      "group": "国内源",
+      "category": "domestic",
+      "url": "https://mirrors.163.com/",
+      "enabled": true
+    },
+    {
+      "id": "bytedance_cdn",
+      "name": "字节跳动静态库 CDN",
+      "group": "国内 CDN",
+      "category": "domestic",
+      "url": "https://lf-cdn-tos.bytecdntp.com/",
+      "enabled": true
+    },
+    {
+      "id": "bootcdn_main",
+      "name": "BootCDN 开源公共库",
+      "group": "国内 CDN",
+      "category": "domestic",
+      "url": "https://cdn.bootcdn.net/",
+      "enabled": true
+    }
+  ]
+}
