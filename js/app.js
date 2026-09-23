@@ -484,8 +484,13 @@
           if (state.localNetwork.ipv6 === false) {
             res.status = 'unsupported_ipv6';
             res.reason = '需 IPv6 网络 (本机当前网络缺少 IPv6 支持，无法直连)';
-          } else if (state.localNetwork.ipv6 === true) {
-            res.reason = '纯 IPv6 网站响应超时 (本机具备 IPv6，但目标服务端无响应)';
+          } else {
+            // 本机具备 IPv6 支持或处于检测状态，但目标无响应或不可达
+            if (res.status === 'timeout') {
+              res.reason = '纯 IPv6 网站响应超时 (目标无响应/DNS未更新/端口未映射)';
+            } else {
+              res.reason = '纯 IPv6 连接失败 (网络不可达/DNS未更新/端口无响应)';
+            }
           }
         }
       } catch {}
@@ -534,12 +539,8 @@
    * 1. 主路径探测：mode: 'no-cors'，若成功返回 HTTP 响应则判定在线
    * 2. 超时与取消捕获：严格遵守配置上限 (如 5000ms)
    * 3. 极速本地/协议拒绝拦截：如 HTTPS 页面探测 HTTP 明文限制、本地 127.0.0.1 端口未开等 (< 12ms)
-   * 4. 链路容错向量 A (Cloudflare 边缘探针)：针对 Tunnel 穿透域名探测 /cdn-cgi/trace
-   * 5. 链路容错向量 B (轻量静态资源探针)：针对站点探测 /favicon.ico 验证 Web 服务器存活
-   * 6. 链路容错向量 C (CORP 同源策略与底层链路复用识别)：
-   *    专门针对配置了 Helmet / Cross-Origin-Resource-Policy: same-origin 的私有或自建服务 (如 Kutt、Sub-Store、Vaultwarden 等)；
-   *    在浏览器内核建立 TCP 握手并完成 TLS 1.3 协商后，由于服务端安全头下发导致 JS 无法读取 Body，
-   *    通过 Keep-Alive 预热复用差分校验与往返 RTT 精准判定服务在线，彻底消除假阴性阻断。
+   * 4. 链路容错向量 A (轻量静态资源探针)：针对站点探测 /favicon.ico 验证 Web 服务器存活
+   * 5. 链路容错向量 B (Cloudflare 边缘探针)：针对 Tunnel 穿透域名探测 /cdn-cgi/trace
    */
   async function probeOnce(url, timeoutMs, externalSignal, targetCategory) {
     const t0 = performance.now();
@@ -616,8 +617,6 @@
       }
 
       if (urlObj && (!externalSignal || !externalSignal.aborted)) {
-        const hasCustomPort = Boolean(urlObj.port && urlObj.port !== '80' && urlObj.port !== '443');
-
         // 容错向量 A：轻量静态图标探针 (/favicon.ico)
         // 针对任天堂等主路径慢重定向、大型 HTML 或 CDN 边缘未命中导致超时的站点，直接探测轻量静态资源验证存活性
         try {
@@ -665,17 +664,6 @@
         } catch {
           // 边缘节点未命中或非 Cloudflare 托管，继续向下
         }
-
-        // 容错向量 C：自建私有服务 CORP 同源策略兼容识别 (Cross-Origin-Resource-Policy Compatible Engine)
-        // 严格约束适用范围：仅针对「自定义分类」且带有「非标准端口」(如 :8888) 的自建私有服务 (如 Kutt、Sub-Store 等部署了 Helmet CORP 头)
-        // 绝对禁止应用于海外公网网站 (如 Telegram、Twitter、YouTube 等)，海外公网网站连接失败 100% 为 GFW 阻断，严禁误报为 CORP 在线！
-        if (targetCategory === 'custom' && hasCustomPort && elapsed >= 15) {
-          return {
-            status: 'online',
-            latency: Math.max(1, elapsed),
-            reason: '服务在线 (HTTP已响应，触发CORP同源策略保护)'
-          };
-        }
       }
 
       // 若容错向量也无法连通，且原本属于超时：明确判定为连接超时
@@ -699,7 +687,7 @@
       // 其他未知网络错误
       let failureReason = err.message || '网络连接异常';
       if (failureReason.includes('Failed to fetch')) {
-        failureReason = '连接失败 (网络不可达/证书未信任/端口无响应)';
+        failureReason = '连接失败 (网络不可达/DNS未更新/端口无响应)';
       }
 
       return {
