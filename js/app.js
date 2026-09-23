@@ -1222,7 +1222,7 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.4.0';
+    const TARGETS_VERSION = '1.5.0';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
@@ -1239,7 +1239,7 @@
       }
     }
 
-    // 若无本地缓存或版本升级，拉取最新的 targets.json (v1.4.0)
+    // 若无本地缓存或版本升级，拉取最新的 targets.json (v1.5.0)
     if (!loadedTargets) {
       try {
         const resp = await fetch('targets.json?_v=' + Date.now());
@@ -1251,8 +1251,12 @@
               const oldTargets = JSON.parse(saved);
               const userCustomTargets = oldTargets.filter(t => (t.category || 'custom') === 'custom');
               if (userCustomTargets.length > 0) {
+                // 保留用户旧自定义项，同时补充 targets.json 中新增的官方默认自定义项 (如 GitHub 加速)
+                const existingUrls = new Set(userCustomTargets.map(t => t.url));
+                const newCustomDefaults = newTargets.filter(t => (t.category || 'custom') === 'custom' && !existingUrls.has(t.url));
+                const mergedCustom = [...userCustomTargets, ...newCustomDefaults];
                 const nonCustomNew = newTargets.filter(t => (t.category || 'custom') !== 'custom');
-                newTargets = userCustomTargets.concat(nonCustomNew);
+                newTargets = mergedCustom.concat(nonCustomNew);
               }
             } catch (e) {}
           }
@@ -1264,6 +1268,11 @@
       } catch (e) {
         console.warn('Cannot fetch targets.json, fallback to built-in:', e);
         loadedTargets = [
+          { id: 'custom_gh_proxy', name: 'GH-Proxy 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh-proxy.com', enabled: true },
+          { id: 'custom_jsdelivr', name: 'jsDelivr 官方CDN', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdelivr.net', enabled: true },
+          { id: 'custom_jsdmirror', name: 'JSDMirror 镜像加速', group: 'GitHub加速', category: 'custom', url: 'https://cdn.jsdmirror.com', enabled: true },
+          { id: 'custom_ghproxy_net', name: 'GHProxy.net 节点', group: 'GitHub加速', category: 'custom', url: 'https://ghproxy.net', enabled: true },
+          { id: 'custom_gh_ddlc', name: 'DDLC GitHub 加速', group: 'GitHub加速', category: 'custom', url: 'https://gh.ddlc.top', enabled: true },
           { id: 'custom_outlook', name: 'Outlook 邮箱网页', group: '常用办公', category: 'custom', url: 'https://outlook.live.com/', enabled: true },
           { id: 'custom_wise', name: 'Wise 官网', group: '跨境理财', category: 'custom', url: 'https://wise.com/', enabled: true },
           { id: 'custom_ifast', name: 'iFAST 官网', group: '境外银行', category: 'custom', url: 'https://www.ifastgb.com/', enabled: true },
