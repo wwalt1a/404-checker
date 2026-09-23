@@ -136,18 +136,43 @@
       enabled: false,
       password: '',
       passwordHash: '',
-      rememberDays: 7,
       title: '安全访问验证',
       subtitle: '本站点已开启访问控制，请输入访问密码以解锁'
     },
     expectedHash: '',
 
     async init() {
-      // 1. 优先读取 window.AUTH_CONFIG (来自 config.js)
-      if (window.AUTH_CONFIG && typeof window.AUTH_CONFIG === 'object') {
+      // 1. 本地私有优先：读取 auth.local.json (受 .gitignore 保护，不入库，本地测试利器)
+      try {
+        const localResp = await fetch('auth.local.json?_v=' + Date.now());
+        if (localResp.ok) {
+          const localData = await localResp.json();
+          if (localData && typeof localData === 'object') {
+            Object.assign(this.config, localData);
+          }
+        }
+      } catch {}
+
+      // 2. Cloudflare Pages 环境变量支持：动态拉取 /api/config
+      if (!this.config.enabled && !this.config.password && !this.config.passwordHash) {
+        try {
+          const cfResp = await fetch('/api/config');
+          if (cfResp.ok) {
+            const cfData = await cfResp.json();
+            if (cfData && cfData.enabled) {
+              Object.assign(this.config, cfData);
+            }
+          }
+        } catch {}
+      }
+
+      // 3. 静态 window.AUTH_CONFIG (来自 config.js 或 build.js 环境变量生成)
+      if (!this.config.enabled && window.AUTH_CONFIG && typeof window.AUTH_CONFIG === 'object') {
         Object.assign(this.config, window.AUTH_CONFIG);
-      } else {
-        // 2. 备选尝试读取 auth.json / auth.local.json
+      }
+
+      // 4. 备选 auth.json
+      if (!this.config.enabled && !this.config.password && !this.config.passwordHash) {
         try {
           const resp = await fetch('auth.json?_v=' + Date.now());
           if (resp.ok) {
@@ -179,32 +204,9 @@
     isAuthenticated() {
       if (!this.isProtected()) return true;
 
-      // 1. 优先查当前会话 (sessionStorage)
-      const sessionToken = sessionStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
-      if (sessionToken && sessionToken === this.expectedHash) {
-        return true;
-      }
-
-      // 2. 查本地免密记录 (localStorage)
-      const localRecord = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
-      if (localRecord) {
-        try {
-          const parsed = JSON.parse(localRecord);
-          if (parsed && parsed.token === this.expectedHash) {
-            if (!parsed.expiresAt || Date.now() < parsed.expiresAt) {
-              // 免密有效期内，同步写回当前会话
-              sessionStorage.setItem(STORAGE_KEYS.AUTH_SESSION, this.expectedHash);
-              return true;
-            } else {
-              localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
-            }
-          }
-        } catch {
-          if (localRecord === this.expectedHash) return true;
-        }
-      }
-
-      return false;
+      // 极简永久认证：只要本地成功登录过一次即长期有效，关闭浏览器重开依然免密
+      const token = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION) || sessionStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+      return Boolean(token && token === this.expectedHash);
     },
 
     async verifyPassword(inputPassword) {
@@ -217,17 +219,9 @@
                       (this.config.password && cleanInput === this.config.password.trim());
 
       if (isMatch) {
+        // 登录成功：永久存入 localStorage，长期有效
+        localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, this.expectedHash);
         sessionStorage.setItem(STORAGE_KEYS.AUTH_SESSION, this.expectedHash);
-
-        const rememberDays = parseInt(this.config.rememberDays, 10);
-        const shouldRemember = dom.authRememberMe ? dom.authRememberMe.checked : true;
-        if (shouldRemember && rememberDays > 0) {
-          const expiresAt = Date.now() + (rememberDays * 24 * 60 * 60 * 1000);
-          localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify({
-            token: this.expectedHash,
-            expiresAt
-          }));
-        }
         return true;
       }
 
@@ -235,8 +229,9 @@
     },
 
     lockSite() {
-      sessionStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+      // 主动点击锁定：清空本地免密凭证
       localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
+      sessionStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
 
       if (state.isRunning) {
         stopBatchTests();

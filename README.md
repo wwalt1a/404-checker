@@ -102,31 +102,29 @@
 
 ## 🔐 部署时可选设置访问密码（安全鉴权）
 
-若您在公网部署（如 Cloudflare Pages），希望仅自己或受邀用户可见您的私有测试目标，可一键开启访问密码保护：
+若您在公网部署（如 Cloudflare Pages），希望仅自己或受邀用户可见您的私有测试目标，可直接以**环境变量**形式设置密码，无需将密码上传至 GitHub 仓库：
 
-### 1. 开启密码保护
-直接修改根目录下的 `config.js` 文件：
-```javascript
-window.AUTH_CONFIG = {
-  enabled: true,              // 开启密码保护
-  password: "yourPassword",   // 访问密码 (明文方式)
-  passwordHash: "",           // 或可选 SHA-256 哈希值 (更安全)
-  rememberDays: 7,            // 记住免密状态天数 (默认7天)
-  title: "安全访问验证",
-  subtitle: "本站点已开启访问控制，请输入访问密码以解锁"
-};
-```
+### 1. Cloudflare Pages 环境变量配置（推荐，无需修改任何代码，密码绝不入库）
+在 Cloudflare 控制台中：
+1. 进入您的 Pages 项目 -> 点击 **设置 (Settings)** -> **环境变量 (Environment variables)**；
+2. 点击 **添加变量 (Add variable)**：
+   - **变量名称**：`AUTH_PASSWORD`
+   - **变量值**：填入您的专属密码（例如 `666666` 或任意复杂密码）
+3. 部署后，系统将自动通过 Cloudflare Pages Functions 动态读取该环境变量并激活安全鉴权；
+4. 访问者在主页弹窗输入该密码后，凭证会安全保存在本地（`localStorage`），**一次登录长期有效**，无需每次反复输入；若需退出，点击右上角 🔒 按钮即可一键重新锁定。
 
-### 2. 推荐：使用 SHA-256 哈希（避免密码在公共仓库暴露）
-在任何现代浏览器中按 F12 打开 Console 控制台，粘贴并执行以下命令生成您密码的哈希：
-```javascript
-crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的专属密码')).then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')))
+### 2. 本地测试专属密码配置 (受 .gitignore 保护)
+若在本地测试或调试时需要密码，直接在根目录下创建 `auth.local.json`（已受 `.gitignore` 保护，永不上载）：
+```json
+{
+  "enabled": true,
+  "password": "你的测试密码"
+}
 ```
-将生成的 64 位字符串填入 `passwordHash`，并将 `password` 留空即可！
 
 ### 3. 严格数据隔离保证
 - **未输入密码前**：网页**绝不加载** `targets.json` 或私有网址，DOM 中**完全不渲染**任何卡片、测试域名或仪表盘统计信息，后台**绝不发起**批量网络探测。
 - **验证通过后**：优雅淡入解锁，自动加载目标并执行测速。
-- **随时重新锁定**：导航栏右上角提供 🔒 按钮，可随时一键锁定并清空会话。
+- **随时重新锁定**：导航栏右上角提供 🔒 按钮，可随时一键锁定并清空本地凭据。
 
 - **用户自定制**：用户在手机浏览器中通过前端弹窗添加、删除或批量导入的网址均会自动保存在手机本地的 `localStorage` 中；点击弹窗底部的“重置为默认网址”即可随时一键复原。
