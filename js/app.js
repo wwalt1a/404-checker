@@ -674,46 +674,24 @@
           // 静态资源同样受限，继续向下
         }
 
-        // 容错向量 C：CORP 同源策略与底层链路复用识别 (Cross-Origin-Resource-Policy Compatible Engine)
-        // 典型场景：Kutt、Sub-Store 等自建服务部署了 Helmet 中间件，下发 Cross-Origin-Resource-Policy: same-origin
-        // 此时浏览器在成功完成 DNS、TCP、TLS 1.3 握手并接收到 200/302 响应头后，因 CORP 安全限制主动阻断 JS 提取 Body。
-        // 若经过了真实的 RTT 耗时 (elapsed >= 15ms)，且为自定义端口、私有服务或通过差分预热校验：
-        if (elapsed >= 15) {
-          // 若为国外分类且耗时极短 (< 120ms)，需警惕为 GFW SNI RST 伪造重置
-          const isSuspectGfwReset = targetCategory === 'overseas' && elapsed < 120 && !hasCustomPort;
-
-          if (!isSuspectGfwReset) {
-            // 通过极速预热复用探针进行差分校验
-            try {
-              const warmCtrl = new AbortController();
-              const warmTimeout = setTimeout(() => warmCtrl.abort(), Math.min(timeoutMs, 1500));
-              await fetch(`${urlObj.origin}/?_warm_check=${Date.now()}`, {
-                method: 'GET',
-                mode: 'no-cors',
-                cache: 'no-store',
-                credentials: 'omit',
-                signal: warmCtrl.signal
-              });
-              clearTimeout(warmTimeout);
-            } catch {
-              // 同样触发同源安全拦截，但底层 TCP/TLS 链路早已贯通
-            }
-
-            return {
-              status: 'online',
-              latency: Math.max(1, elapsed),
-              reason: '服务在线 (HTTP已响应，触发CORP同源策略保护)'
-            };
-          }
+        // 容错向量 C：自建私有服务 CORP 同源策略兼容识别 (Cross-Origin-Resource-Policy Compatible Engine)
+        // 严格约束适用范围：仅针对「自定义分类」且带有「非标准端口」(如 :8888) 的自建私有服务 (如 Kutt、Sub-Store 等部署了 Helmet CORP 头)
+        // 绝对禁止应用于海外公网网站 (如 Telegram、Twitter、YouTube 等)，海外公网网站连接失败 100% 为 GFW 阻断，严禁误报为 CORP 在线！
+        if (targetCategory === 'custom' && hasCustomPort && elapsed >= 15) {
+          return {
+            status: 'online',
+            latency: Math.max(1, elapsed),
+            reason: '服务在线 (HTTP已响应，触发CORP同源策略保护)'
+          };
         }
       }
 
-      // 若在短时间内被网络防火墙主动 RST 重置（如 GFW SNI 阻断）
-      if (elapsed < 250 && targetCategory === 'overseas') {
+      // 海外公网网站若未成功建立通信，明确判定为网络阻断 (GFW SNI 阻断 / TCP RST / DNS 污染)
+      if (targetCategory === 'overseas') {
         return {
           status: 'blocked',
           latency: elapsed,
-          reason: '快速拒绝/阻断 (防火墙TCP RST/DNS污染)'
+          reason: '连接阻断 (防火墙TCP RST/SNI阻断/DNS污染)'
         };
       }
 
