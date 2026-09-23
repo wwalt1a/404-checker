@@ -1341,11 +1341,6 @@ body {
   transform: translateY(-1px);
 }
 
-.auth-card-footer {
-  margin-top: 20px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
 
 /* 密码错误时的晃动特效 */
 @keyframes authShake {
