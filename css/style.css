@@ -262,12 +262,12 @@ body {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  margin-left: 6px;
   background: rgba(168, 85, 247, 0.15);
   border: 1px solid rgba(168, 85, 247, 0.4);
   color: #c084fc;
   letter-spacing: 0.2px;
   vertical-align: middle;
+  flex-shrink: 0;
 }
 
 /* 缺少 IPv6 环境卡片状态 */
@@ -767,8 +767,10 @@ body {
 
 .target-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  row-gap: 3px;
+  column-gap: 6px;
   margin-bottom: 2px;
 }
 
@@ -776,9 +778,9 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: #f1f5f9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .target-group {
@@ -880,6 +882,34 @@ body {
 .retest-btn:hover, .retest-btn:active {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* 移动端窄屏目标卡片自适应精细化 (<= 480px) */
+@media (max-width: 480px) {
+  .target-card {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .target-name {
+    font-size: 13.5px;
+  }
+
+  .target-meta {
+    gap: 6px;
+  }
+
+  .status-badge {
+    padding: 3px 7px;
+    font-size: 11.5px;
+    gap: 4px;
+  }
+
+  .retest-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
 }
 
 /* 底部最后更新信息 */
