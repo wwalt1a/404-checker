@@ -25,7 +25,7 @@
   const state = {
     config: Object.assign({}, DEFAULT_CONFIG),
     targets: [],
-    activeCategory: 'custom', // 'custom' (默认第一项) | 'overseas' | 'domestic'
+    activeCategory: 'custom', // 'custom' (默认第一项) | 'overseas' | 'ai' | 'domestic'
     isRunning: false,
     abortBatchController: null,
     activeFilter: 'all', // 'all' | 'online' | 'offline'
@@ -41,6 +41,7 @@
   const CATEGORY_META = {
     custom: { name: '自定义网址', icon: '🛠️' },
     overseas: { name: '国外网址', icon: '🌐' },
+    ai: { name: '国外 AI', icon: '🤖' },
     domestic: { name: '国内网址', icon: '🇨🇳' }
   };
 
@@ -95,6 +96,7 @@
     catMenuItems: document.querySelectorAll('.category-menu-item'),
     catCountCustom: document.getElementById('cat-count-custom'),
     catCountOverseas: document.getElementById('cat-count-overseas'),
+    catCountAi: document.getElementById('cat-count-ai'),
     catCountDomestic: document.getElementById('cat-count-domestic'),
     // 弹窗元素
     modalSettings: document.getElementById('modal-settings'),
@@ -675,8 +677,8 @@
         };
       }
 
-      // 海外公网网站若未成功建立通信，明确判定为网络阻断 (GFW SNI 阻断 / TCP RST / DNS 污染)
-      if (targetCategory === 'overseas') {
+      // 海外公网网站与 AI 服务若未成功建立通信，明确判定为网络阻断 (GFW SNI 阻断 / TCP RST / DNS 污染)
+      if (targetCategory === 'overseas' || targetCategory === 'ai') {
         return {
           status: 'blocked',
           latency: elapsed,
@@ -947,10 +949,12 @@
     const allTargets = state.targets;
     const countCustom = allTargets.filter(t => (t.category || 'custom') === 'custom').length;
     const countOverseas = allTargets.filter(t => t.category === 'overseas').length;
+    const countAi = allTargets.filter(t => t.category === 'ai').length;
     const countDomestic = allTargets.filter(t => t.category === 'domestic').length;
 
     if (dom.catCountCustom) dom.catCountCustom.textContent = countCustom;
     if (dom.catCountOverseas) dom.catCountOverseas.textContent = countOverseas;
+    if (dom.catCountAi) dom.catCountAi.textContent = countAi;
     if (dom.catCountDomestic) dom.catCountDomestic.textContent = countDomestic;
 
     const targets = getActiveCategoryTargets().filter(t => t.enabled !== false);
@@ -1217,7 +1221,7 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.6.1';
+    const TARGETS_VERSION = '1.7.0';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
@@ -1841,7 +1845,7 @@
         parsedTargets.push({
           id: 'custom_' + Date.now() + '_' + idx,
           name: name || getHostDisplay(url),
-          group: currentCat === 'custom' ? (url.includes(':') ? '端口服务' : '自选常用') : (currentCat === 'domestic' ? '国内源' : '国外'),
+          group: currentCat === 'custom' ? (url.includes(':') ? '端口服务' : '自选常用') : (currentCat === 'domestic' ? '国内源' : (currentCat === 'ai' ? 'AI服务' : '国外')),
           category: currentCat,
           url: url,
           enabled: true,
