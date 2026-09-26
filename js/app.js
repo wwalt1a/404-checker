@@ -513,7 +513,7 @@
 
   /**
    * 安全构造探测 URL (规范化端口与防缓存参数)
-   * 完美适配形如 https://sub.fapcraft.cf:8888 的带端口地址与 Cloudflare Tunnel 路径
+   * 完美适配形如 https://sub.fap.qzz.io:8888 的带端口地址与 Cloudflare Tunnel 路径
    */
   function buildProbeUrl(rawUrl) {
     try {
@@ -983,7 +983,7 @@
   function getHostDisplay(url) {
     try {
       const u = new URL(url);
-      // 若包含非标准端口 (例如 sub.fapcraft.cf:8888)，完整展示 host:port
+      // 若包含非标准端口 (例如 sub.fap.qzz.io:8888)，完整展示 host:port
       return u.host || u.hostname;
     } catch {
       return url.replace(/^https?:\/\//i, '').split('/')[0] || url;
@@ -1816,7 +1816,7 @@
         let name = '';
         let url = line;
 
-        // 智能提取带端口的 URL (如 https://sub.fapcraft.cf:8888 或 sub.fapcraft.cf:8888)
+        // 智能提取带端口的 URL (如 https://sub.fap.qzz.io:8888 或 sub.fap.qzz.io:8888)
         const tokens = line.split(/\s+/);
         const urlIndex = tokens.findIndex(t => t.startsWith('http://') || t.startsWith('https://') || /:\d{2,5}/.test(t));
         if (urlIndex !== -1) {
