@@ -1370,32 +1370,145 @@
     }
   }
 
-  // ================= 辅助功能：一键复制 / 弹窗 / Toast =================
+  // ================= 辅助功能：一键复制完整检测报告 / 弹窗 / Toast =================
 
-  function copyReachableUrls() {
-    const catName = CATEGORY_META[state.activeCategory].name;
-    const reachable = getActiveCategoryTargets()
-      .filter(t => t.status === 'online')
-      .map(t => `${t.name}: ${t.url} (${t.latency}ms)`);
+  function getClientEnvironment() {
+    const ua = navigator.userAgent;
+    let os = '未知系统';
+    if (/windows/i.test(ua)) os = 'Windows';
+    else if (/android/i.test(ua)) os = 'Android';
+    else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+    else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
+    else if (/linux/i.test(ua)) os = 'Linux';
 
-    if (reachable.length === 0) {
-      showToast(`⚠️ 【${catName}】暂无可达网址，请先开始测试`);
+    let browser = '未知浏览器';
+    if (/micromessenger/i.test(ua)) browser = '微信内嵌';
+    else if (/edg/i.test(ua)) browser = 'Edge';
+    else if (/chrome|crios/i.test(ua)) browser = 'Chrome';
+    else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+    else if (/safari/i.test(ua)) browser = 'Safari';
+
+    let netType = '';
+    if (navigator.connection && navigator.connection.effectiveType) {
+      netType = ` / ${navigator.connection.effectiveType.toUpperCase()}`;
+    }
+
+    let ipv6Status = '未探测';
+    if (state.localNetwork.ipv6 === true) ipv6Status = '双栈 (支持IPv6)';
+    else if (state.localNetwork.ipv6 === false) ipv6Status = '仅 IPv4 (无IPv6)';
+
+    return `${os} · ${browser}${netType} | 本机网络: ${ipv6Status}`;
+  }
+
+  function getReportTime() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  }
+
+  function copyDiagnosticReport() {
+    const allTargets = state.targets.filter(t => t.enabled !== false);
+    if (allTargets.length === 0) {
+      showToast('⚠️ 暂无任何网址数据');
       return;
     }
 
-    const text = reachable.join('\n');
+    const onlineTargets = allTargets.filter(t => t.status === 'online');
+    const badTargets = allTargets.filter(t =>
+      t.status === 'timeout' || t.status === 'blocked' || t.status === 'offline' || t.status === 'unsupported_ipv6'
+    );
+    const pendingTargets = allTargets.filter(t => !t.status || t.status === 'pending' || t.status === 'testing');
+
+    const avgLatency = onlineTargets.length > 0
+      ? Math.round(onlineTargets.reduce((sum, t) => sum + (t.latency || 0), 0) / onlineTargets.length)
+      : 0;
+
+    const timeStr = getReportTime();
+    const envStr = getClientEnvironment();
+
+    const lines = [];
+    lines.push('================ 404-Checker 网络检测报告 ================');
+    lines.push(`⏱️ 检测时间: ${timeStr}`);
+    lines.push(`📱 客户端环境: ${envStr}`);
+    lines.push(`📊 整体概况: 总计 ${allTargets.length} 项 | ✅ 可用 ${onlineTargets.length} | ❌ 异常 ${badTargets.length} | ⏳ 未测 ${pendingTargets.length}${onlineTargets.length > 0 ? ` | 平均延迟 ${avgLatency}ms` : ''}`);
+    lines.push('');
+
+    // 1. 异常优先置顶区 (方便管理员第一眼定位故障)
+    if (badTargets.length > 0) {
+      lines.push(`⚠️【异常 / 无法访问列表】(共 ${badTargets.length} 项，请优先排查)`);
+      lines.push('--------------------------------------------------');
+      badTargets.forEach(t => {
+        const catMeta = CATEGORY_META[t.category] || { name: '自定义' };
+        const reason = t.reason || (t.status === 'timeout' ? '请求超时' : '连接失败');
+        lines.push(`❌ [${catMeta.name}] ${t.name}: ${t.url} (${reason})`);
+      });
+      lines.push('');
+    } else if (onlineTargets.length > 0 && pendingTargets.length === 0) {
+      lines.push('🎉【异常检测】未发现任何异常目标，所有已测试网站均连通正常！');
+      lines.push('');
+    }
+
+    // 2. 分分类详细明细区
+    lines.push('📋【全部分类详细明细】');
+    lines.push('--------------------------------------------------');
+
+    const catOrder = ['custom', 'overseas', 'domestic'];
+    catOrder.forEach(catKey => {
+      const meta = CATEGORY_META[catKey];
+      if (!meta) return;
+      const catTargets = allTargets.filter(t => (t.category || 'custom') === catKey);
+      if (catTargets.length === 0) return;
+
+      const catOnline = catTargets.filter(t => t.status === 'online').length;
+      lines.push(`【${meta.icon} ${meta.name}】(可用 ${catOnline} / 总计 ${catTargets.length})`);
+
+      catTargets.forEach(t => {
+        if (t.status === 'online') {
+          lines.push(`  ✅ ${t.name}: ${t.latency}ms (${t.url})`);
+        } else if (t.status === 'timeout') {
+          lines.push(`  ❌ ${t.name}: 超时 (${t.url})`);
+        } else if (t.status === 'blocked') {
+          lines.push(`  ❌ ${t.name}: 阻断/跨域 (${t.url})`);
+        } else if (t.status === 'unsupported_ipv6') {
+          lines.push(`  ❌ ${t.name}: 缺少IPv6 (${t.url})`);
+        } else if (t.status === 'offline') {
+          lines.push(`  ❌ ${t.name}: 失败 (${t.url})`);
+        } else if (t.status === 'testing') {
+          lines.push(`  ⏳ ${t.name}: 测试中... (${t.url})`);
+        } else {
+          lines.push(`  ⏳ ${t.name}: 未测试 (${t.url})`);
+        }
+      });
+      lines.push('');
+    });
+
+    lines.push('=========================================================');
+    lines.push('💡 报告由 404-Checker 客户端原生探测引擎生成');
+
+    const reportText = lines.join('\n');
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        showToast(`📋 已成功复制【${catName}】${reachable.length} 个可用网址到剪贴板`);
+      navigator.clipboard.writeText(reportText).then(() => {
+        showReportToast(badTargets.length, pendingTargets.length);
       }).catch(() => {
-        fallbackCopy(text, reachable.length, catName);
+        fallbackCopyReport(reportText, badTargets.length, pendingTargets.length);
       });
     } else {
-      fallbackCopy(text, reachable.length, catName);
+      fallbackCopyReport(reportText, badTargets.length, pendingTargets.length);
     }
   }
 
-  function fallbackCopy(text, count, catName) {
+  function showReportToast(badCount, pendingCount) {
+    if (pendingCount > 0 && badCount === 0) {
+      showToast('📋 已复制检测报告（提示：部分网址尚未测试）');
+    } else if (badCount > 0) {
+      showToast(`📋 已复制检测报告（包含 ${badCount} 项异常网址）`);
+    } else {
+      showToast('📋 已复制完整检测报告，可直接发送反馈！');
+    }
+  }
+
+  function fallbackCopyReport(text, badCount, pendingCount) {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
@@ -1404,28 +1517,15 @@
     ta.select();
     try {
       document.execCommand('copy');
-      showToast(`📋 已成功复制【${catName}】${count} 个可用网址到剪贴板`);
+      showReportToast(badCount, pendingCount);
     } catch {
-      showToast('❌ 复制失败，请手动选择');
+      showToast('❌ 复制失败，请手动在控制台提取');
     }
     document.body.removeChild(ta);
   }
 
-  function fallbackCopy(text, count) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      showToast(`📋 已成功复制 ${count} 个可用网址到剪贴板`);
-    } catch {
-      showToast('❌ 复制失败，请手动选择');
-    }
-    document.body.removeChild(ta);
-  }
+  // 保持旧调用兼容
+  const copyReachableUrls = copyDiagnosticReport;
 
   function showToast(msg) {
     const toast = document.createElement('div');

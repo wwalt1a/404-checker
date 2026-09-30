@@ -385,6 +385,7 @@ body {
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
   transition: all 0.2s ease;
   min-height: 48px;
+  white-space: nowrap;
 }
 
 .btn-primary:active {
@@ -417,6 +418,7 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   min-height: 48px;
+  white-space: nowrap;
 }
 
 .btn-secondary:active {
