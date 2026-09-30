@@ -418,11 +418,59 @@
       "enabled": true
     },
     {
+      "id": "mail_proton",
+      "name": "Proton Mail 邮箱",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://mail.proton.me",
+      "enabled": true
+    },
+    {
+      "id": "mail_tuta",
+      "name": "Tuta Mail 邮箱",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://app.tuta.com",
+      "enabled": true
+    },
+    {
+      "id": "mail_gmail",
+      "name": "Gmail 邮箱网页版",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://mail.google.com",
+      "enabled": true
+    },
+    {
       "id": "ms_outlook",
       "name": "Outlook 邮箱网页版",
-      "group": "全球服务",
+      "group": "常用邮箱",
       "category": "overseas",
       "url": "https://outlook.live.com/",
+      "enabled": true
+    },
+    {
+      "id": "mail_yahoo",
+      "name": "Yahoo Mail 雅虎邮箱",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://mail.yahoo.com",
+      "enabled": true
+    },
+    {
+      "id": "mail_zoho",
+      "name": "Zoho Mail 邮箱",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://mail.zoho.com",
+      "enabled": true
+    },
+    {
+      "id": "mail_yandex",
+      "name": "Yandex Mail 邮箱",
+      "group": "常用邮箱",
+      "category": "overseas",
+      "url": "https://mail.yandex.com",
       "enabled": true
     },
     {
