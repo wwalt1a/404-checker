@@ -1,7 +1,7 @@
 /**
  * 极简 Service Worker - 离线缓存网页壳
  */
-const CACHE_NAME = '404-checker-v8';
+const CACHE_NAME = '404-checker-v9';
 const ASSETS = [
   './',
   './index.html',

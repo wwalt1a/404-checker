@@ -1,5 +1,5 @@
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "targets": [
     {
       "id": "custom_gh_proxy",
@@ -127,6 +127,22 @@
       "group": "加密资产",
       "category": "custom",
       "url": "https://www.htx.com/",
+      "enabled": true
+    },
+    {
+      "id": "isp_test_xyz",
+      "name": "XYZ域名测试 (123456.xyz)",
+      "group": "ISP连通测试",
+      "category": "custom",
+      "url": "https://123456.xyz/",
+      "enabled": true
+    },
+    {
+      "id": "isp_test_top",
+      "name": "TOP域名测试 (cxhello.top)",
+      "group": "ISP连通测试",
+      "category": "custom",
+      "url": "https://cxhello.top/",
       "enabled": true
     },
     {

@@ -1217,7 +1217,7 @@
   // ================= 目标管理与本地存储 =================
 
   async function loadTargets() {
-    const TARGETS_VERSION = '1.7.1';
+    const TARGETS_VERSION = '1.7.2';
     const localVer = localStorage.getItem('net_reachability_version');
 
     // 优先从 LocalStorage 读取用户自定制数据
@@ -1326,6 +1326,8 @@
       { id: 'custom_ibkr', name: 'IBKR 盈透证券', group: '美股券商', category: 'custom', url: 'https://www.interactivebrokers.com/', enabled: true },
       { id: 'custom_binance', name: '币安 Binance', group: '加密资产', category: 'custom', url: 'https://www.binance.com/', enabled: true },
       { id: 'custom_htx', name: '火币 HTX', group: '加密资产', category: 'custom', url: 'https://www.htx.com/', enabled: true },
+      { id: 'isp_test_xyz', name: 'XYZ域名测试 (123456.xyz)', group: 'ISP连通测试', category: 'custom', url: 'https://123456.xyz/', enabled: true },
+      { id: 'isp_test_top', name: 'TOP域名测试 (cxhello.top)', group: 'ISP连通测试', category: 'custom', url: 'https://cxhello.top/', enabled: true },
       { id: 'sm_youtube', name: 'YouTube 视频', group: '社交媒体', category: 'overseas', url: 'https://www.youtube.com/', enabled: true },
       { id: 'sm_instagram', name: 'Instagram 社交', group: '社交媒体', category: 'overseas', url: 'https://www.instagram.com/', enabled: true }
     ];
